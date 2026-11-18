@@ -2,7 +2,7 @@
 // The extension host against a fake vscode, a fake Graph and a throwaway token file and ~/.chirp. No network.
 const test = require('node:test'); const assert = require('node:assert');
 const fs = require('fs'); const os = require('os'); const path = require('path');
-const { install, memento } = require('./vscodeStub');
+const { install, memento, secrets } = require('./vscodeStub');
 const { shortId } = require('../src/mirror');
 const { ui } = install();
 const ext = require('../src/extension');
@@ -13,10 +13,24 @@ const mem = (userId, displayName) => ({ userId, displayName });
 const msg = (id, from, at, html, extra) => Object.assign({ id, messageType: 'message', createdDateTime: at, from: { user: { id: from, displayName: from === 'me' ? 'Sean Ahn' : 'Ben Carter' } }, body: { content: html || 'x' } }, extra);
 function chat(id, o) { return Object.assign({ id, chatType: 'group', topic: 'Chat ' + id, members: [mem('me', 'Sean Ahn'), mem('b', 'Ben Carter')], viewpoint: { lastMessageReadDateTime: READ }, lastMessagePreview: msg('p-' + id, 'b', '2026-11-17T09:00:00Z') }, o); }
 
+const JWT = (payload) => ['{"alg":"none"}', JSON.stringify(payload), 's'].map((x, i) => (i < 2 ? Buffer.from(x).toString('base64url') : x)).join('.');
+const MY_TOKEN = JWT({ appid: 'cid', oid: 'me', tid: 'tid', upn: 'sean@example.com', name: 'Sean Ahn' });
+/** Microsoft's sign-in endpoints: a device code, then tokens (or what world.loginAnswers says, in order). */
+function login(world, url, init, calls) {
+  const body = new URLSearchParams(String(init.body));
+  calls.push({ method: 'POST', path: 'login:' + url.split('/').pop(), body: init.body, scope: body.get('scope') });
+  const ok = (b, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'content-type': 'application/json' } });
+  if (url.endsWith('/devicecode')) return ok({ device_code: 'dc', user_code: 'ABCD-1234', verification_uri: 'https://microsoft.com/devicelogin', expires_in: 900, interval: 1 });
+  const a = (world.loginAnswers || []).shift();
+  if (a) return ok(a.body, a.status || 400);
+  return ok({ access_token: MY_TOKEN, refresh_token: 'r', expires_in: 3600, scope: body.get('scope') || '' });
+}
+
 /** A fake Graph: routes by path; `world` is changed by the tests. Records every request. */
 function graph(world) {
   const calls = [];
   const fetch = async (url, init) => {
+    if (String(url).startsWith('https://login.microsoftonline.com/')) return login(world, url, init, calls);
     const u = new URL(url); const p = decodeURIComponent(u.pathname.replace('/v1.0', '')) + u.search;
     calls.push({ method: init.method, path: p, body: init.body });
     const ok = (b) => new Response(JSON.stringify(b), { status: 200, headers: { 'content-type': 'application/json' } });
@@ -57,8 +71,13 @@ function start(world, o = {}) {
   const fetch = graph(world);
   const watched = [];
   const context = { extensionUri: { fsPath: path.join(__dirname, '..') }, globalState: o.memento || memento(), subscriptions: [] };
-  const api = ext.activate(context, { fetch, tokenFile, chirpDir: path.join(dir, '.chirp'), watchFile: (f, opts, fn) => watched.push(fn), unwatchFile: () => {} });
-  const h = { api, fetch, dir, context, watched, world };
+  // the 0.1.x tests run under the token-file method; o.method picks another, with no token file configured
+  ui.config['chirp.signIn.method'] = o.method || 'auto';
+  ui.config['chirp.signIn.tokenFile'] = o.method && o.method !== 'tokenFile' ? '' : tokenFile;
+  ui.config['chirp.agentFiles'] = true;
+  const sec = o.secrets || secrets();
+  const api = ext.activate(context, { fetch, chirpDir: path.join(dir, '.chirp'), watchFile: (f, opts, fn) => watched.push(fn), unwatchFile: () => {}, secrets: sec, sleep: async () => {}, clientId: 'cid' });
+  const h = { api, fetch, dir, context, watched, world, secrets: sec };
   running.push(h);
   return h;
 }
@@ -108,7 +127,7 @@ test('sign-in needed stops polling and shows the message', async () => {
   const h = start(world, { noToken: true });
   const view = ui.resolveSidebar();
   await settle();
-  assert.deepStrictEqual(lastState(view).status, { kind: 'signin', text: "Sign in with the ms365 MCP server's login tool" });
+  assert.deepStrictEqual(lastState(view).status, { kind: 'signin', text: `Sign in with the tool that keeps ${path.join(h.dir, 'token.json')}` });
   assert.strictEqual(h.fetch.calls.length, 0);
   assert.strictEqual(h.watched.length, 1, 'watches the token file');
   fs.writeFileSync(path.join(h.dir, 'token.json'), JSON.stringify({ access_token: 'a', refresh_token: 'r', client_id: 'c', tenant_id: 'tid', expires_at: Date.now() / 1000 + 3600 }));
@@ -483,7 +502,8 @@ test('sign-in comes back even if the token file does not change again', async ()
   world.marked = []; world.messages = {};
   const fetch = graph(world);
   const context = { extensionUri: { fsPath: path.join(__dirname, '..') }, globalState: memento(), subscriptions: [] };
-  const api = ext.activate(context, { fetch, tokenFile, chirpDir: path.join(dir, '.chirp'), watchFile: () => {}, unwatchFile: () => {}, setInterval: (fn) => { ticks.push(fn); return ticks.length; }, clearInterval: () => {} });
+  ui.config['chirp.signIn.method'] = 'auto'; ui.config['chirp.signIn.tokenFile'] = tokenFile;
+  const api = ext.activate(context, { fetch, chirpDir: path.join(dir, '.chirp'), watchFile: () => {}, unwatchFile: () => {}, setInterval: (fn) => { ticks.push(fn); return ticks.length; }, clearInterval: () => {}, secrets: secrets(), sleep: async () => {}, clientId: 'cid' });
   running.push({ api });
   const view = ui.resolveSidebar(); await settle();
   assert.strictEqual(lastState(view).status.kind, 'signin');
@@ -544,4 +564,118 @@ test('someone added to the chat shows up in the open tab: title, header and @ li
   const n = panel.webview.posted.filter((x) => x.type === 'header').length;
   await h.api.conversations.poll('chat:' + PLAT);
   assert.strictEqual(panel.webview.posted.filter((x) => x.type === 'header').length, n, 'nothing new, nothing sent');
+});
+
+
+// ---- chirp's own sign-in (sign-in plan, Task 5)
+const graphCalls = (h) => h.fetch.calls.filter((c) => !c.path.startsWith('login:'));
+const signInState = (view) => lastState(view).signIn;
+
+test('signed out at first: the sidebar asks to sign in, no Graph calls', async () => {
+  ui.focused = true; ui.session = () => undefined;
+  const h = start(chatWorld(), { method: 'auto' }); const view = ui.resolveSidebar(); await settle();
+  assert.deepStrictEqual(signInState(view), { stage: 'signedOut' });
+  assert.deepStrictEqual(graphCalls(h), []);
+  assert.strictEqual(lastState(view).account, null);
+});
+
+test('sign in with device code shows the code, then the chats', async () => {
+  ui.focused = true;
+  const h = start(chatWorld(), { method: 'deviceCode' }); const view = ui.resolveSidebar(); await settle();
+  await ui.commands['chirp.signIn'](); await settle();
+  const states = view.webview.posted.filter((x) => x.type === 'state');
+  assert.ok(states.some((x) => x.signIn && x.signIn.stage === 'code' && x.signIn.userCode === 'ABCD-1234' && x.signIn.verificationUri === 'https://microsoft.com/devicelogin'), 'the code was shown');
+  assert.ok(ui.infos.some((m) => m.includes('ABCD-1234')), 'and in a notification');
+  assert.strictEqual(signInState(view), null);
+  assert.deepStrictEqual(lastState(view).account, { username: 'sean@example.com', method: 'deviceCode' });
+  assert.deepStrictEqual(lastState(view).chats.map((r) => r.id), [PLAT]);
+});
+
+test('signing in through the editor uses chirp\'s app', async () => {
+  ui.focused = true; ui.sessions.length = 0;
+  ui.session = (scopes, options) => (options && options.silent && !ui.signedInViaEditor ? undefined : (ui.signedInViaEditor = true, { accessToken: MY_TOKEN, account: { label: 'sean' } }));
+  ui.signedInViaEditor = false;
+  const h = start(chatWorld(), { method: 'auto' }); const view = ui.resolveSidebar(); await settle();
+  assert.deepStrictEqual(signInState(view), { stage: 'signedOut' });
+  await ui.commands['chirp.signIn'](); await settle();
+  assert.deepStrictEqual(lastState(view).account, { username: 'sean@example.com', method: 'editor' });
+  assert.ok(ui.sessions.some((c) => c.scopes[0] === 'VSCODE_CLIENT_ID:cid' && c.options.createIfNone));
+  assert.deepStrictEqual(lastState(view).chats.map((r) => r.id), [PLAT]);
+  ui.session = () => undefined;
+});
+
+test('channels wait for Enable channels', async () => {
+  ui.focused = true;
+  const w = channelWorld();
+  const h = start(w, { method: 'deviceCode' }); const view = ui.resolveSidebar(); await settle();
+  await ui.commands['chirp.signIn'](); await settle();
+  assert.strictEqual(lastState(view).channels, 'off');
+  assert.ok(!h.fetch.calls.some((c) => c.path === '/me/joinedTeams'), 'no teams before channels are enabled');
+  await ui.commands['chirp.enableChannels'](); await settle();
+  assert.ok(h.fetch.calls.some((c) => c.path === 'login:devicecode' && /ChannelMessage\.Read\.All/.test(c.scope)), 'asked for the channel permissions');
+  assert.strictEqual(lastState(view).channels, 'enabled');
+  assert.ok(h.fetch.calls.some((c) => c.path === '/me/joinedTeams'));
+  assert.strictEqual(h.context.globalState.get('chirp.channelsWanted'), true, 'remembered for the next sign-in');
+});
+
+test('enable channels failing keeps chats and offers the admin link', async () => {
+  ui.focused = true;
+  const w = channelWorld();
+  const h = start(w, { method: 'deviceCode' }); const view = ui.resolveSidebar(); await settle();
+  await ui.commands['chirp.signIn'](); await settle();
+  w.loginAnswers = [{ status: 400, body: { error: 'expired_token' } }];
+  await ui.commands['chirp.enableChannels'](); await settle();
+  assert.strictEqual(lastState(view).channels, 'failed');
+  assert.deepStrictEqual(lastState(view).chats.map((r) => r.id), [PLAT], 'chats still there');
+  await ui.commands['chirp.copyAdminLink']();
+  assert.deepStrictEqual(ui.copied.at(-1), 'https://login.microsoftonline.com/organizations/adminconsent?client_id=cid');
+});
+
+test('sign out clears lists, mentions and tabs', async () => {
+  ui.focused = true; ui.panels.length = 0;
+  const h = start(chatWorld(), { method: 'deviceCode' }); const view = ui.resolveSidebar(); await settle();
+  await ui.commands['chirp.signIn'](); await settle();
+  const panel = await openTab(h, PLAT);
+  h.api.mentions.flag('chat:x', 'm');
+  await ui.commands['chirp.signOut'](); await settle();
+  assert.strictEqual(h.context.globalState.get('chirp.lists'), undefined);
+  assert.deepStrictEqual(h.api.mentions.flagged(), []);
+  assert.strictEqual(panel.disposed, true, 'tabs closed');
+  assert.deepStrictEqual(signInState(view), { stage: 'signedOut' });
+  assert.deepStrictEqual(lastState(view).chats, []);
+  assert.strictEqual(lastState(view).account, null);
+  assert.strictEqual(h.secrets.m.size, 0, 'device-code tokens deleted');
+  const n = graphCalls(h).length; await settle(40);
+  assert.strictEqual(graphCalls(h).length, n, 'polling stopped');
+});
+
+test('a different account clears the old one\'s data first', async () => {
+  ui.focused = true;
+  const mem = memento();
+  await mem.update('chirp.lists', { me: { id: 'someone-else', displayName: 'X' }, chats: [chat('zzz')], teams: [] });
+  await mem.update('chirp.mentions', { flagged: { 'chat:zzz': 'm1' }, seen: [], baseline: 1 });
+  const h = start(chatWorld(), { method: 'deviceCode', memento: mem }); const view = ui.resolveSidebar(); await settle();
+  await ui.commands['chirp.signIn'](); await settle();
+  assert.ok(!lastState(view).chats.some((r) => r.id === 'zzz'));
+  assert.deepStrictEqual(h.api.mentions.flagged(), [], 'the other account\'s mentions are gone');
+});
+
+test('changing the method signs in again with the new one', async () => {
+  ui.focused = true;
+  const h = start(chatWorld()); const view = ui.resolveSidebar(); await settle();
+  assert.deepStrictEqual(lastState(view).chats.map((r) => r.id), [PLAT], 'signed in by the token file');
+  ui.setConfig('chirp.signIn.tokenFile', '');
+  ui.setConfig('chirp.signIn.method', 'deviceCode'); await settle();
+  assert.deepStrictEqual(signInState(view), { stage: 'signedOut' }, 'the new method has no session yet');
+  const n = graphCalls(h).length; await settle(40);
+  assert.strictEqual(graphCalls(h).length, n, 'the old method no longer polls');
+});
+
+test('token file without channel permission shows the reason', async () => {
+  ui.focused = true;
+  const w = channelWorld();
+  w.fail = (p) => (p === '/me/joinedTeams' ? new Response(JSON.stringify({ error: { code: 'Forbidden' } }), { status: 403 }) : undefined);
+  const h = start(w); const view = ui.resolveSidebar(); await settle();
+  assert.strictEqual(lastState(view).channels, 'forbidden');
+  assert.deepStrictEqual(lastState(view).chats.map((r) => r.id), [PLAT]);
 });

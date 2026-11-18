@@ -20,7 +20,10 @@ function fakeWebview() {
 }
 
 function install() {
-  const ui = { providers: {}, panels: [], commands: {}, executed: [], opened: [], focused: true, config: {}, out: [], watchers: [] };
+  const ui = { providers: {}, panels: [], commands: {}, executed: [], opened: [], focused: true, config: {}, out: [], watchers: [], infos: [], copied: [], sessions: [] };
+  const configChange = new Emitter();
+  // the editor's Microsoft provider: ui.session(scopes, options) answers getSession; calls are recorded
+  ui.session = () => undefined;
   const windowState = new Emitter();
   const Uri = {
     file: (p) => ({ fsPath: p, path: p, scheme: 'file', toString: () => 'file://' + p }),
@@ -50,16 +53,22 @@ function install() {
       createWebviewPanel,
       createOutputChannel: () => ({ appendLine: (l) => ui.out.push(l), dispose() {} }),
       showErrorMessage: (m) => { ui.out.push('error: ' + m); },
+      showInformationMessage: async (m) => { ui.infos.push(m); return undefined; },
     },
     commands: {
       registerCommand: (id, fn) => { ui.commands[id] = fn; return { dispose() {} }; },
       executeCommand: async (id, ...a) => { ui.executed.push([id, ...a]); return ui.commands[id] ? ui.commands[id](...a) : undefined; },
     },
-    workspace: { getConfiguration: (section) => ({ get: (k, d) => { const v = ui.config[(section ? section + '.' : '') + k]; return v === undefined ? d : v; } }) },
-    env: { openExternal: async (u) => { ui.opened.push(u.toString()); return true; } },
+    workspace: {
+      getConfiguration: (section) => ({ get: (k, d) => { const v = ui.config[(section ? section + '.' : '') + k]; return v === undefined ? d : v; } }),
+      onDidChangeConfiguration: configChange.event,
+    },
+    authentication: { getSession: async (provider, scopes, options) => { ui.sessions.push({ provider, scopes, options }); return ui.session(scopes, options); } },
+    env: { openExternal: async (u) => { ui.opened.push(u.toString()); return true; }, clipboard: { writeText: async (t) => { ui.copied.push(t); } } },
   };
   Module._load = function (request, ...rest) { return request === 'vscode' ? vscode : origLoad.call(this, request, ...rest); };
   ui.setFocus = (f) => { ui.focused = f; windowState.fire({ focused: f }); };
+  ui.setConfig = (key, value) => { ui.config[key] = value; configChange.fire({ affectsConfiguration: (sec) => key === sec || key.startsWith(sec + '.') }); };
   /** Shows the sidebar: resolves the registered view provider with a fake view. */
   ui.resolveSidebar = () => {
     const view = { webview: fakeWebview(), badge: undefined, visible: true, show() {}, onDidChangeVisibility: () => ({ dispose() {} }), onDidDispose: () => ({ dispose() {} }) };
@@ -70,6 +79,13 @@ function install() {
   return { vscode, ui };
 }
 
-function memento() { const m = new Map(); return { get: (k) => m.get(k), update: (k, v) => { m.set(k, JSON.parse(JSON.stringify(v))); return Promise.resolve(); } }; }
+/** The editor's secret storage, shared by "windows" that use the same object. */
+function secrets() {
+  const m = new Map(); const ch = new Emitter();
+  return { m, get: async (k) => m.get(k), store: async (k, v) => { m.set(k, v); ch.fire({ key: k }); }, delete: async (k) => { m.delete(k); ch.fire({ key: k }); }, onDidChange: ch.event };
+}
 
-module.exports = { install, memento, Emitter };
+// like VS Code's, update(key, undefined) deletes the key
+function memento() { const m = new Map(); return { get: (k) => m.get(k), update: (k, v) => { if (v === undefined) m.delete(k); else m.set(k, JSON.parse(JSON.stringify(v))); return Promise.resolve(); } }; }
+
+module.exports = { install, memento, secrets, Emitter };

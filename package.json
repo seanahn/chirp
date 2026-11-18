@@ -52,12 +52,42 @@
       {
         "command": "chirp.activeConversationFile",
         "title": "chirp: Active Conversation File"
+      },
+      {
+        "command": "chirp.signIn",
+        "title": "chirp: Sign In",
+        "icon": "$(sign-in)"
+      },
+      {
+        "command": "chirp.signOut",
+        "title": "chirp: Sign Out",
+        "icon": "$(sign-out)"
+      },
+      {
+        "command": "chirp.enableChannels",
+        "title": "chirp: Enable Channels"
+      },
+      {
+        "command": "chirp.cancelSignIn",
+        "title": "chirp: Cancel Sign-in"
+      },
+      {
+        "command": "chirp.copyAdminLink",
+        "title": "chirp: Copy the Admin Approval Link"
+      },
+      {
+        "command": "chirp.copyCode",
+        "title": "chirp: Copy Sign-in Code and Open the Sign-in Page"
       }
     ],
     "menus": {
       "commandPalette": [
         {
           "command": "chirp.activeConversationFile",
+          "when": "false"
+        },
+        {
+          "command": "chirp.copyCode",
           "when": "false"
         }
       ],
@@ -66,8 +96,50 @@
           "command": "chirp.refresh",
           "when": "view == chirp.sidebar",
           "group": "navigation@1"
+        },
+        {
+          "command": "chirp.signIn",
+          "when": "view == chirp.sidebar",
+          "group": "2_account@1"
+        },
+        {
+          "command": "chirp.signOut",
+          "when": "view == chirp.sidebar",
+          "group": "2_account@2"
         }
       ]
+    },
+    "configuration": {
+      "title": "chirp",
+      "properties": {
+        "chirp.signIn.method": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "editor",
+            "deviceCode",
+            "tokenFile"
+          ],
+          "default": "auto",
+          "enumDescriptions": [
+            "A token file if one is set, otherwise the editor's Microsoft sign-in, otherwise a sign-in code.",
+            "The editor's own Microsoft account sign-in, using chirp's app.",
+            "A code you enter at microsoft.com/devicelogin; chirp keeps the tokens in the editor's secret storage.",
+            "Reuse the login another tool keeps in a token file (chirp.signIn.tokenFile)."
+          ],
+          "description": "How chirp signs in to Microsoft. See the README's \"Signing in\" section."
+        },
+        "chirp.signIn.tokenFile": {
+          "type": "string",
+          "default": "",
+          "description": "A token file another tool keeps (JSON with access_token, refresh_token, client_id, tenant_id, expires_at). When set, chirp reuses that login instead of signing in itself. chirp refreshes it in place and never deletes it."
+        },
+        "chirp.agentFiles": {
+          "type": "boolean",
+          "default": true,
+          "description": "Write each open conversation to ~/.chirp as plain text (files readable only by you), so an AI agent beside chirp knows which chat is open. Off: no files, and chirp.activeConversationFile returns nothing."
+        }
+      }
     }
   },
   "scripts": {

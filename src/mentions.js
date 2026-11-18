@@ -20,6 +20,8 @@ function createMentionState(memento, now = Date.now) {
     seen: (messageId) => s.seen.includes(messageId),
     markSeen(messageId) { if (s.seen.includes(messageId)) return; s.seen.push(messageId); if (s.seen.length > SEEN_CAP) s.seen = s.seen.slice(-SEEN_CAP); save(); },
     baseline: () => s.baseline,
+    /** Forget everything: flags, seen hits and the baseline (signing out, or another account). */
+    reset() { s.flagged = {}; s.seen = []; s.baseline = now(); save(); },
   };
 }
 

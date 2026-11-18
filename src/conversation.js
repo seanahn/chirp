@@ -290,6 +290,9 @@ class Conversations {
     if (file) this.mirror.setCurrent(file);
   }
 
+  /** Closes every conversation tab (signing out). */
+  closeAll() { for (const tab of [...this.tabs.values()]) tab.panel.dispose(); }
+
   /** The file of the chirp tab most recently in front, while it is open and on screen. */
   activeConversationFile() {
     const t = this.front;
