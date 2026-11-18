@@ -403,6 +403,13 @@ Following perch (Sean's choice: "like perch"):
 How to install and run it is in the [README](../../README.md); setup is
 in [note 901](901-setup.md).
 
+**Build:** v1 was built on 2026-11-18 and published as
+[PR #1](https://github.com/seanahn/chirp/pull/1). The step-by-step
+history, with the build plan and per-task commits, was squashed before
+publishing because it held real names and Teams ids. It survives only on
+the local branch `backup/v1-before-scrub`, where the last commit
+containing the plan is `9fe4665`.
+
 ### The modules
 
 | File | What it does |
