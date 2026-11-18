@@ -18,7 +18,8 @@ function createEditorAuth({ authentication, clientId, state }) {
       // getSession takes no cancellation token: Cancel stops chirp waiting, and the editor's own prompt can be dismissed
       s = cancel ? await Promise.race([asking, new Promise((_, reject) => cancel.onCancellationRequested(() => reject(new SignInCancelled())))]) : await asking;
     } catch (e) {
-      if (e instanceof SignInCancelled || /cancel/i.test(String(e && e.message))) throw new SignInCancelled();
+      // declining the editor's prompt reads "User did not consent to login." (needs a live check); closing it, "Cancelled"
+      if (e instanceof SignInCancelled || /cancel|did not consent/i.test(String(e && e.message))) throw new SignInCancelled();
       throw new SignInFailed('unusable', String(e && e.message || e));
     }
     if (!s || !s.accessToken) throw new SignInCancelled();
@@ -35,6 +36,9 @@ function createEditorAuth({ authentication, clientId, state }) {
     let s;
     try { s = await authentication.getSession('microsoft', scopes(channelsOn()), { silent: true }); } catch (_) { s = null; }
     if (!s || !s.accessToken) throw new SignInNeeded();
+    // the same app check as signIn: a token issued to another app is never used, not even at start-up
+    const c = claims(s.accessToken);
+    if (!c || c.appid !== clientId) { token = null; throw new SignInNeeded(); }
     token = s.accessToken;
     return token;
   }

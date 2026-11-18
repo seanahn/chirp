@@ -170,3 +170,31 @@ test('signOut deletes the tokens', async () => {
   assert.strictEqual(secrets.m.has(KEY), false);
   await assert.rejects(auth.accessToken(), SignInNeeded);
 });
+
+// ---- from the final review
+test('Cancel ends the wait at once, and a late token is not kept', async () => {
+  const secrets = fakeSecrets();
+  let fire; const cancel = { isCancellationRequested: false, onCancellationRequested: (fn) => { fire = fn; return { dispose() {} }; } };
+  const { auth } = make({ secrets, fetch: fakeFetch([tokens()]), sleep: () => new Promise(() => {}) });
+  const p = auth.signIn({ cancel });
+  await new Promise((r) => setTimeout(r, 5));
+  cancel.isCancellationRequested = true; fire();
+  await assert.rejects(p, SignInCancelled);
+  const late = make({ secrets, fetch: fakeFetch([async () => { cancel2.isCancellationRequested = true; return tokens(); }]) });
+  const cancel2 = { isCancellationRequested: false, onCancellationRequested: () => ({ dispose() {} }) };
+  await assert.rejects(late.auth.signIn({ cancel: cancel2 }), SignInCancelled);
+  assert.strictEqual(secrets.m.has(KEY), false, 'tokens that arrive after Cancel are dropped');
+});
+
+test('a server error or garbage while polling keeps polling', async () => {
+  const { auth } = make({ fetch: fakeFetch([new Response('oops', { status: 502 }), json(500, { error: 'server_error' }), tokens()]) });
+  await auth.signIn({});
+  assert.strictEqual(await auth.accessToken(), TOKEN);
+});
+
+test('a refused refresh signs out, so windows stop retrying it', async () => {
+  const secrets = fakeSecrets({ [KEY]: stored() });
+  const { auth } = make({ secrets, fetch: fakeFetch([json(400, { error: 'invalid_request' })]) });
+  await assert.rejects(auth.accessToken(), SignInNeeded);
+  assert.strictEqual(secrets.m.has(KEY), false);
+});

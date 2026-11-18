@@ -105,3 +105,18 @@ test('Cancel stops waiting on the editor', async () => {
   setTimeout(() => { cancel.isCancellationRequested = true; fire(); }, 5);
   await assert.rejects(p, SignInCancelled);
 });
+
+// ---- from the final review
+test('the silent path refuses a token for another app too', async () => {
+  const other = jwt({ appid: 'someone-else', oid: 'u1', tid: 't1' });
+  const a = createEditorAuth({ authentication: fakeAuthentication(() => session(other)), clientId: 'cid', state: memento() });
+  await assert.rejects(a.accessToken(), SignInNeeded, 'never used, not even at start-up');
+  assert.strictEqual(a.account(), null);
+});
+
+test('declining the editor\'s prompt is a cancel, not a reason to fall back', async () => {
+  for (const msg of ['User did not consent to login.', 'Cancelled', 'User cancelled the flow']) {
+    const a = createEditorAuth({ authentication: fakeAuthentication(() => { throw new Error(msg); }), clientId: 'cid', state: memento() });
+    await assert.rejects(a.signIn({}), SignInCancelled, msg);
+  }
+});

@@ -58,15 +58,20 @@ function createDeviceCodeAuth({ secrets, fetch, clientId, onCode = () => {}, now
     const c = start.data, expiresAt = now() + Number(c.expires_in || 900) * 1000;
     onCode({ userCode: c.user_code, verificationUri: c.verification_uri, expiresAt });
     let interval = Number(c.interval || 5);
+    // Cancel ends the wait at once, not at the next poll
+    const cancelled = cancel ? new Promise((resolve) => { if (cancel.isCancellationRequested) resolve(); else cancel.onCancellationRequested(() => resolve()); }) : null;
+    const wait = (ms) => (cancelled ? Promise.race([sleep(ms), cancelled]) : sleep(ms));
+    const stop = () => cancel && cancel.isCancellationRequested;
     for (;;) {
-      if (cancel && cancel.isCancellationRequested) throw new SignInCancelled();
-      await sleep(interval * 1000);
-      if (cancel && cancel.isCancellationRequested) throw new SignInCancelled();
+      if (stop()) throw new SignInCancelled();
+      await wait(interval * 1000);
+      if (stop()) throw new SignInCancelled();
       let r;
       try { r = await post('token', { grant_type: 'urn:ietf:params:oauth:grant-type:device_code', client_id: clientId, device_code: c.device_code }); }
       catch (_) { if (now() >= expiresAt) throw failed('expired'); continue; }   // a network blip: keep polling until the code runs out
-      if (r.ok && r.data.access_token) { await save(record(r.data, channels)); return; }
+      if (r.ok && r.data.access_token) { if (stop()) throw new SignInCancelled(); await save(record(r.data, channels)); return; }
       const err = r.data.error;
+      if (!err || r.status >= 500) { if (now() >= expiresAt) throw failed('expired'); continue; }   // a server error or garbage: keep polling
       if (err === 'authorization_pending') { if (now() >= expiresAt) throw failed('expired'); continue; }
       if (err === 'slow_down') { interval += 5; continue; }
       throw failed(errorKind(r.data), r.data.error_description);
@@ -82,6 +87,8 @@ function createDeviceCodeAuth({ secrets, fetch, clientId, onCode = () => {}, now
     if (!r.ok || !r.data.access_token) {
       if (r.data.error === 'invalid_grant') { await secrets.delete(KEY); cached = null; throw new SignInNeeded(); }
       if (r.status >= 500) throw new Offline();
+      // any other refusal: the tokens can't be refreshed, so they go, and no window keeps retrying them
+      await secrets.delete(KEY); cached = null;
       throw new SignInNeeded();
     }
     cached = undefined;
