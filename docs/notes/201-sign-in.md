@@ -241,13 +241,21 @@ personal Microsoft account gets a "Default Directory"):
    - Supported account types: **Accounts in any organizational directory
      (multitenant)**.
    - Redirect URI: none for now.
-2. **Authentication.**
-   - Add a platform: **Mobile and desktop applications**, with redirect
-     URI `https://vscode.dev/redirect`. That's the one VS Code's provider
-     uses; check the provider's source at build time and add `http://localhost`
-     if it uses a loopback.
-   - Turn on **Allow public client flows**, which the device-code flow
-     needs.
+2. **Authentication → Add a platform → Mobile and desktop applications.**
+   Add these redirect URIs:
+   - `https://vscode.dev/redirect`, the hand-off page both editors use;
+   - `http://localhost`, for the local server both editors start at
+     `127.0.0.1` on a random port (Entra accepts any port for
+     `http://localhost`);
+   - once you have the app id: `ms-appx-web://Microsoft.AAD.BrokerPlugin/<app id>`,
+     for VS Code on Windows signing in through the Windows account
+     broker.
+
+   The first two were checked in the `microsoft-authentication` extension
+   bundled with VS Code 1.129.1 and Cursor 3.12.17 on 2026-11-18. The
+   Windows one is from how Windows sign-in works and wasn't checked
+   there. Then, under **Advanced settings**, set **Allow public client
+   flows** to **Yes**; device-code sign-in needs it.
 3. **API permissions:** add the delegated Microsoft Graph permissions in
    the table above. Don't grant admin consent in your own directory; it
    only applies there.
