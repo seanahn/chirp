@@ -1,5 +1,5 @@
 'use strict';
-// Microsoft Graph over fetch: the shared token on every request, one refresh and retry on a 401, a timeout on every
+// Microsoft Graph over fetch: a token from the Auth (auth.js) on every request, one refresh and retry on a 401, a timeout on every
 // request, and errors that say what happened (GraphError with the status and Retry-After, GraphTimeout, Offline).
 const { Offline } = require('./tokenStore');
 
