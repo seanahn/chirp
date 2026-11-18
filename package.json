@@ -1,8 +1,8 @@
 {
   "name": "chirp",
   "displayName": "chirp",
-  "description": "Microsoft Teams chats and channels in a sidebar of their own, each conversation an editor tab. No AI inside: the agent beside it reads and replies.",
-  "version": "0.1.1",
+  "description": "Microsoft Teams chats and channels in a sidebar of their own, each conversation an editor tab, with its text available to the AI agent beside it. Not affiliated with Microsoft.",
+  "version": "0.2.0",
   "publisher": "seanahn",
   "license": "MIT",
   "repository": {
@@ -148,5 +148,12 @@
   },
   "devDependencies": {
     "jsdom": "^25.0.0"
-  }
+  },
+  "icon": "media/listing-icon.png",
+  "keywords": [
+    "teams",
+    "chat",
+    "microsoft 365",
+    "agent"
+  ]
 }

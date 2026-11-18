@@ -1,14 +1,14 @@
 'use strict';
-// The ms365 MCP server's login, shared: chirp reads its token file before every request, refreshes it when it is about to
-// expire, and writes it back in the same format. The file is never left half-written (temp file, then rename), and a
-// newer token the MCP server stored meanwhile always wins (design 101, "Signing in").
+// A login another tool keeps in a token file, shared: chirp reads the file before every request, refreshes it when it is
+// about to expire, and writes it back in the same format. The file is never left half-written (temp file, then rename), and a
+// newer token the other tool stored meanwhile always wins (design 101, "Signing in").
 const fs = require('fs');
 
 const REFRESH_MARGIN_S = 60;
 const SCOPE = 'https://graph.microsoft.com/.default offline_access';
 const TORN_RETRY_MS = 200;
 
-class SignInNeeded extends Error { constructor(msg) { super(msg || 'Sign in with the ms365 MCP server\'s login tool'); this.name = 'SignInNeeded'; } }
+class SignInNeeded extends Error { constructor(msg) { super(msg || 'Sign in needed'); this.name = 'SignInNeeded'; } }
 class Offline extends Error { constructor(msg) { super(msg || 'Offline'); this.name = 'Offline'; } }
 
 function createTokenStore({ file, fetch, now = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
@@ -20,7 +20,7 @@ function createTokenStore({ file, fetch, now = Date.now, sleep = (ms) => new Pro
     try { text = fs.readFileSync(file, 'utf8'); } catch (e) { if (e.code === 'ENOENT') throw new SignInNeeded(); throw e; }
     return JSON.parse(text);
   }
-  /** The file's contents. A torn read (the MCP server mid-write) is retried once. */
+  /** The file's contents. A torn read (the other tool mid-write) is retried once. */
   async function read() {
     let t;
     try { t = readOnce(); } catch (e) {
@@ -55,7 +55,7 @@ function createTokenStore({ file, fetch, now = Date.now, sleep = (ms) => new Pro
     }
     const expiresAt = Math.floor(now() / 1000) + Number(data.expires_in || 3600);
     const latest = await read();
-    if (Number(latest.expires_at) > expiresAt) return latest.access_token;   // the MCP server refreshed meanwhile
+    if (Number(latest.expires_at) > expiresAt) return latest.access_token;   // the other tool refreshed meanwhile
     write(Object.assign({}, latest, { access_token: data.access_token, refresh_token: data.refresh_token || latest.refresh_token, expires_at: expiresAt }));
     return data.access_token;
   }
