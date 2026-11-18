@@ -1,0 +1,80 @@
+{
+  "name": "chirp",
+  "displayName": "chirp",
+  "description": "Microsoft Teams chats and channels in a sidebar of their own, each conversation an editor tab. No AI inside: the agent beside it reads and replies.",
+  "version": "0.1.1",
+  "publisher": "seanahn",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/seanahn/chirp"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onWebviewPanel:chirp.conversation"
+  ],
+  "main": "./src/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "chirp",
+          "title": "chirp",
+          "icon": "media/teams-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "chirp": [
+        {
+          "type": "webview",
+          "id": "chirp.sidebar",
+          "name": "Teams"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "chirp.refresh",
+        "title": "chirp: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "chirp.focusFilter",
+        "title": "chirp: Filter Chats and Channels"
+      },
+      {
+        "command": "chirp.activeConversationFile",
+        "title": "chirp: Active Conversation File"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "chirp.activeConversationFile",
+          "when": "false"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "chirp.refresh",
+          "when": "view == chirp.sidebar",
+          "group": "navigation@1"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "check": "for f in src/*.js media/*.js test/*.js; do [ -e \"$f\" ] || continue; node --check \"$f\" || exit 1; done",
+    "test": "node --test --test-force-exit --test-timeout=20000 test/*.test.js"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.0"
+  }
+}
