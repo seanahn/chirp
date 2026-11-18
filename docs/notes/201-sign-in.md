@@ -227,6 +227,8 @@ Each case gets a message in the sidebar, with the next step
 | Graph returns 401 | editor | ask for the session again without prompting (`getSession` with `silent: true`), retry once; if no session comes back: **Sign in** button |
 | Graph returns 401 | device code, token file | refresh once, retry once, as in 101 |
 | Window reloads mid sign-in | device code | the flow is dropped; the sidebar shows **Sign in** |
+| Secret storage unavailable (on Linux, no keyring) | device code | "chirp couldn't save your sign-in: the editor's secret storage isn't available. On Linux, install a keyring such as gnome-keyring." |
+| Token file's login lacks channel permissions (403 on teams) | token file | Teams section: "Channels need permissions this login doesn't have." |
 
 ## Registering chirp's app (Sean, once)
 
@@ -374,3 +376,34 @@ app id:
   |               |               |-- GET /me, /me/chats ------------------------------------------------------------->|
   |<-- chats; "Signed in as …" ---|                     |                  |                     |                |
 ```
+
+## Builder's decisions from the plan
+
+Made while planning on 2026-11-18. All count as *(builder's call)*.
+
+- **Device-code scopes** are sent as full Graph scope names
+  (`https://graph.microsoft.com/Chat.ReadWrite`); `offline_access` is
+  sent as is. When Microsoft answers `slow_down`, polling waits 5 s
+  longer.
+- **Personal-account errors** are recognized by `AADSTS50020` or
+  `AADSTS9002331`, or by a mention of a Microsoft account. These codes
+  are a guess, checked at the first live sign-in.
+- **The editor method** remembers "signed out" and "channels enabled" in
+  global state, which all windows share.
+- **Until channels are enabled,** the teams list and the channel-mention
+  search don't run under the `editor` and `deviceCode` methods. Under
+  `tokenFile` they run, and a 403 turns them off with the reason shown.
+- **Changing a `chirp.signIn.*` setting** stops polling and signs in again
+  with the new method, silently if it already has a session.
+- **Sign Out also closes the open conversation tabs.**
+- **The sidebar's states and their exact text:**
+  - signed out: **Sign in to Microsoft**;
+  - waiting: "Waiting for sign-in in the browser…" with **Cancel**;
+  - a sign-in code: the code shown large, **Copy code & open**, and
+    "Enter it at <link>";
+  - the account line: "Signed in as <user> (editor | sign-in code |
+    token file)".
+- **The listing icon** is a speech bubble with a small bird.
+- **The version** becomes 0.2.0. The description ends "Not affiliated with
+  Microsoft." A test checks that nothing shipped says `ms365`, `zig` or
+  `c3`.
