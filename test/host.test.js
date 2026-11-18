@@ -688,3 +688,28 @@ test('the sidebar\'s buttons run the sign-in commands', async () => {
   await settle();
   assert.deepStrictEqual(ui.executed.map((x) => x[0]), ['chirp.signIn', 'chirp.cancelSignIn', 'chirp.copyCode', 'chirp.enableChannels', 'chirp.copyAdminLink']);
 });
+
+test('turning agent files off stops writing at once', async () => {
+  ui.focused = true; ui.panels.length = 0;
+  const h = start(chatWorld()); ui.resolveSidebar(); await settle();
+  await openTab(h, PLAT);
+  const file = path.join(h.dir, '.chirp', 'chats', `Design Team Chat ${shortId(PLAT)}.teams`);
+  const before = fs.readFileSync(file, 'utf8');
+  ui.setConfig('chirp.agentFiles', false); await settle();
+  h.world.messages[PLAT].unshift(msg('m9', 'b', '2026-11-17T13:00:00Z', 'after'));
+  await h.api.conversations.poll('chat:' + PLAT);
+  assert.strictEqual(fs.readFileSync(file, 'utf8'), before, 'no file changed');
+  assert.strictEqual(await ui.commands['chirp.activeConversationFile'](), null);
+});
+
+test('sign out deletes chirp\'s files', async () => {
+  ui.focused = true; ui.panels.length = 0;
+  const h = start(chatWorld(), { method: 'deviceCode' }); ui.resolveSidebar(); await settle();
+  await ui.commands['chirp.signIn'](); await settle();
+  await openTab(h, PLAT);
+  const file = path.join(h.dir, '.chirp', 'chats', `Design Team Chat ${shortId(PLAT)}.teams`);
+  assert.ok(fs.existsSync(file));
+  await ui.commands['chirp.signOut'](); await settle();
+  assert.strictEqual(fs.existsSync(file), false);
+  assert.strictEqual(fs.existsSync(path.join(h.dir, '.chirp', 'current.teams')), false);
+});

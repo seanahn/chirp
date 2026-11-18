@@ -40,19 +40,20 @@ function block(m, indent) {
 function formatChat(conv, messages) {
   const head = [`# Teams chat: ${oneLine(conv.name)}`, `# chat id: ${conv.id}`, `# members: ${(conv.members || []).map(oneLine).join(', ')}`,
     '# Written by chirp; mirrors the latest messages. Older messages, and replies:',
-    '# use the ms365 MCP server with the chat id above (list-chat-messages, send-chat-message).'];
+    '# use a Microsoft Graph tool (for example a Microsoft 365 MCP server) with the chat id above.'];
   const body = messages.filter(shown).slice(-HISTORY_CAP).map((m) => block(m, ''));
   return head.join('\n') + '\n' + (body.length ? '\n' + body.join('\n\n') + '\n' : '');
 }
 function formatChannel(conv, posts) {
   const head = [`# Teams channel: ${oneLine(conv.team)} › ${oneLine(conv.name)}`, `# team id: ${conv.teamId}`, `# channel id: ${conv.id}`,
     '# Written by chirp; mirrors the latest posts, each with its id and its replies indented beneath it.',
-    '# Older posts, and replies: use the ms365 MCP server with the ids above (list-channel-messages; post-channel-message with a post id to reply).'];
+    '# Older posts, and replies: use a Microsoft Graph tool (for example a Microsoft 365 MCP server) with the ids above.'];
   const body = posts.filter(shown).slice(-HISTORY_CAP).map((p) => [block(p, ''), ...(p.replies || []).filter(shown).map((r) => block(r, '    '))].join('\n'));
   return head.join('\n') + '\n' + (body.length ? '\n' + body.join('\n\n') + '\n' : '');
 }
 
-function createMirror({ dir }) {
+/** @param enabled() whether files are written at all (setting chirp.agentFiles) */
+function createMirror({ dir, enabled = () => true }) {
   const entries = new Map();   // conversation id -> { path, open }
   let current = null;
 
@@ -66,6 +67,7 @@ function createMirror({ dir }) {
 
   /** Writes the conversation's file and returns its path. A renamed conversation keeps its file until closed(). */
   function write(conv, items) {
+    if (!enabled()) return null;
     const desired = path.join(dir, fileName(conv));
     let e = entries.get(conv.id);
     if (e && !e.open && e.path !== desired) {
@@ -88,6 +90,7 @@ function createMirror({ dir }) {
   }
 
   function setCurrent(file) {
+    if (!file || !enabled()) return;
     current = file;
     atomic(path.join(dir, 'current.teams'), fs.readFileSync(file, 'utf8'));
   }
@@ -95,7 +98,13 @@ function createMirror({ dir }) {
   return {
     write, setCurrent,
     closed(convId) { const e = entries.get(convId); if (e) e.open = false; },
-    pathFor(convId) { const e = entries.get(convId); return e ? e.path : null; },
+    pathFor(convId) { const e = enabled() && entries.get(convId); return e ? e.path : null; },
+    /** Deletes every file this mirror wrote, and current.teams (signing out). Other files in the directory stay. */
+    clearAll() {
+      for (const e of entries.values()) { try { fs.unlinkSync(e.path); } catch (_) { /* already gone */ } }
+      try { fs.unlinkSync(path.join(dir, 'current.teams')); } catch (_) { /* none */ }
+      entries.clear(); current = null;
+    },
   };
 }
 

@@ -30,7 +30,7 @@ test('chat file matches the design format', () => {
 # chat id: 19:7e2a91f04b6d4e8fa1b5d9e0f6a2b4d8@thread.v2
 # members: Sean Ahn, Jordan Lee, Priya Shah, Omar Haddad, Mia Torres, Lena Park
 # Written by chirp; mirrors the latest messages. Older messages, and replies:
-# use the ms365 MCP server with the chat id above (list-chat-messages, send-chat-message).
+# use a Microsoft Graph tool (for example a Microsoft 365 MCP server) with the chat id above.
 
 [2026-11-17 14:19] Jordan Lee (id 1794953943369):
   @Omar @Mia @Sean are you all ok to have a meeting about the Testing framework at 5 pm PT today?
@@ -48,7 +48,7 @@ test('channel file indents replies', () => {
 # team id: T1
 # channel id: 19:Xq7T@thread.tacv2
 # Written by chirp; mirrors the latest posts, each with its id and its replies indented beneath it.
-# Older posts, and replies: use the ms365 MCP server with the ids above (list-channel-messages; post-channel-message with a post id to reply).
+# Older posts, and replies: use a Microsoft Graph tool (for example a Microsoft 365 MCP server) with the ids above.
 
 [2026-11-18 09:00] Ann (id 100):
   Subject: Release
@@ -156,4 +156,41 @@ test('another window owning current.teams is left alone', () => {
   const cur = fs.readFileSync(path.join(dir, 'current.teams'), 'utf8');
   assert.ok(cur.includes('# chat id: 19:other@x'), 'the window that last set it keeps it');
   assert.ok(!cur.includes('three'));
+});
+
+// ---- agent files for everyone (sign-in plan, Task 7)
+test('headers name no particular tool', () => {
+  const dir = mk(); const m = createMirror({ dir });
+  const chat = fs.readFileSync(m.write(CHAT, []), 'utf8');
+  const chan = fs.readFileSync(m.write({ kind: 'channel', id: '19:q@thread.tacv2', teamId: 'T', team: 'Product Team', name: 'General' }, []), 'utf8');
+  for (const t of [chat, chan]) { assert.ok(!/ms365|list-chat-messages|post-channel-message/i.test(t), t); }
+  assert.ok(chat.includes('# use a Microsoft Graph tool (for example a Microsoft 365 MCP server) with the chat id above.\n'));
+  assert.ok(chan.includes('# Older posts, and replies: use a Microsoft Graph tool (for example a Microsoft 365 MCP server) with the ids above.\n'));
+});
+
+test('disabled mirror writes nothing', () => {
+  const dir = mk(); let on = false;
+  const m = createMirror({ dir, enabled: () => on });
+  assert.strictEqual(m.write(CHAT, []), null);
+  assert.strictEqual(fs.existsSync(dir), false);
+  assert.strictEqual(m.pathFor(CHAT.id), null);
+  on = true;
+  const p = m.write(CHAT, []);
+  assert.ok(fs.existsSync(p));
+  on = false;
+  assert.strictEqual(m.pathFor(CHAT.id), null, 'off again: no path to report');
+  m.setCurrent(p);
+  assert.strictEqual(fs.existsSync(path.join(dir, 'current.teams')), false);
+});
+
+test('clearAll removes what it wrote', () => {
+  const dir = mk(); const m = createMirror({ dir });
+  const a = m.write(CHAT, []);
+  const b = m.write({ kind: 'channel', id: '19:q@thread.tacv2', teamId: 'T', team: 'Product Team', name: 'General' }, []);
+  m.setCurrent(a);
+  fs.writeFileSync(path.join(dir, 'chats', 'someone-elses.txt'), 'x');
+  m.clearAll();
+  assert.deepStrictEqual([fs.existsSync(a), fs.existsSync(b), fs.existsSync(path.join(dir, 'current.teams'))], [false, false, false]);
+  assert.ok(fs.existsSync(path.join(dir, 'chats', 'someone-elses.txt')), 'only chirp\'s own files');
+  assert.strictEqual(m.pathFor(CHAT.id), null);
 });

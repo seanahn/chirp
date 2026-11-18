@@ -172,7 +172,7 @@ function activate(context, deps = {}) {
     context.globalState.update(LISTS_KEY, undefined);
     mentions.reset();
     s.me = null; meFetched = false; s.chats = []; s.teams = []; s.counts.clear(); s.lastPreview.clear();
-    if (mirror.clearAll) mirror.clearAll();
+    mirror.clearAll();
     conversations.closeAll();
     sidebar.update({ chats: [], teams: [] });
   }
@@ -280,7 +280,7 @@ function activate(context, deps = {}) {
     return c ? { team: t.name, name: c.name } : undefined;
   };
 
-  const mirror = createMirror({ dir: deps.chirpDir || path.join(os.homedir(), '.chirp') });
+  const mirror = createMirror({ dir: deps.chirpDir || path.join(os.homedir(), '.chirp'), enabled: () => cfg('agentFiles') !== false });
   const conversations = new Conversations({
     api, g, mirror, log, isFocused, extensionUri: context.extensionUri,
     me: ensureMe, meId: () => (s.me ? s.me.id : null), tenantId: () => auth.tenantId(),

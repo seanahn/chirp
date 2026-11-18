@@ -200,7 +200,7 @@ Plain text, so the agent can read it directly:
 # chat id: 19:7e2a91f04b6d4e8fa1b5d9e0f6a2b4d8@thread.v2
 # members: Sean Ahn, Jordan Lee, Priya Shah, Omar Haddad, Mia Torres, Lena Park
 # Written by chirp; mirrors the latest messages. Older messages, and replies:
-# use the ms365 MCP server with the chat id above (list-chat-messages, send-chat-message).
+# use a Microsoft Graph tool (for example a Microsoft 365 MCP server) with the chat id above.
 
 [2026-11-17 14:19] Jordan Lee (id 1794953943369):
   @Omar @Mia @Sean are you all ok to have a meeting about the Testing framework at 5 pm PT today?
