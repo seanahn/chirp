@@ -415,3 +415,26 @@ Made while planning on 2026-11-18. All count as *(builder's call)*.
 - **The version** becomes 0.2.0. The description ends "Not affiliated with
   Microsoft." A test checks that nothing shipped says `ms365`, `zig` or
   `c3`.
+
+## Build
+
+Built on 2026-11-18 on branch `sign-in`, and published as 0.2.0 the same
+day at Sean's go. The live sign-in checks (Task 9) were deferred. Nothing
+in the editor or device-code paths has run against Microsoft yet.
+
+Unchecked assumptions, from the final review:
+- the editor's message when a user declines its prompt ("User did not
+  consent to login.");
+- whether a second `getSession` with more scopes is silent for an account
+  that already consented;
+- that access tokens are JWTs with `appid`, `oid` and `upn`;
+- `secrets.onDidChange` firing across windows;
+- secret storage with no keyring on Linux, which may fall back to memory
+  instead of throwing;
+- the personal-account error codes;
+- where the admin consent link lands afterwards.
+
+Changes from the final review: Sign Out persists across windows and
+reloads until Sign In, every way of finding a login confirms the account,
+turning `chirp.agentFiles` off deletes the files, and a refused refresh
+signs out. The last commit containing the build plan is `45270bd`.
