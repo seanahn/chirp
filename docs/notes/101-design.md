@@ -115,7 +115,15 @@ Opening a chat that already has a tab focuses that tab.
   inline images are the builder's call.
 - Scrolling to the top loads older messages.
 - A message box at the bottom: Enter sends, Shift+Enter adds a newline.
-  Typing @mentions is not in the first version.
+- **@mentions** (added 2026-11-18, Sean's request):
+  - Typing `@` in a chat's message box lists the chat's other members,
+    narrowed as you type. ↑/↓ move, Enter or Tab picks, Escape closes;
+    clicking a name picks it too.
+  - A picked name goes in as `@Full Name`. On send, every picked name
+    still in the text becomes a Teams mention (`<at id>` plus the
+    `mentions` array), so that person is notified. A Retry carries the
+    mentions too.
+  - Not in channels yet, and only people already in the chat.
 
 **Read state** *(builder's call)*: a chat is marked read in Teams
 (`markChatReadForUser`) when its tab is visible and the VS Code window has

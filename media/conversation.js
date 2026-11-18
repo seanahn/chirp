@@ -172,19 +172,56 @@
   // ---- sending
   const escapeHtml = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br>');
   let pendingSeq = 0, canSend = false, readOnly = false;
+  // ---- @mentions: the chat's other members, offered after @; what was picked rides along with the message
+  let people = [];
+  const picksOf = new WeakMap();   // textarea -> [{ name, userId }]
+  let popup = null;                // { ta, start, items, sel, node }
+  function closePopup() { if (popup) { popup.node.remove(); popup = null; } }
+  function drawPopup() {
+    popup.node.replaceChildren(...popup.items.map((p, i) => {
+      const row = el('div', 'person' + (i === popup.sel ? ' selected' : ''), p.name);
+      row.addEventListener('mousedown', (e) => { e.preventDefault(); pick(i); });
+      return row;
+    }));
+  }
+  /** After each keystroke: is the caret just after "@something" that matches a member? */
+  function lookForMention(ta) {
+    if (!people.length) return closePopup();
+    const before = ta.value.slice(0, ta.selectionStart);
+    const m = /(^|\s)@([^@\n]{0,40})$/.exec(before);
+    const items = m ? people.filter((p) => p.name.toLowerCase().includes(m[2].toLowerCase())) : [];
+    if (!items.length) return closePopup();
+    if (!popup || popup.ta !== ta) { closePopup(); popup = { ta, node: el('div', 'mention-list') }; ta.after(popup.node); }
+    popup.start = before.length - m[2].length - 1; popup.items = items; popup.sel = 0;
+    drawPopup();
+  }
+  function pick(i) {
+    const { ta, start } = popup, person = popup.items[i];
+    const end = ta.selectionStart, text = '@' + person.name + ' ';
+    ta.value = ta.value.slice(0, start) + text + ta.value.slice(end);
+    ta.selectionStart = ta.selectionEnd = start + text.length;
+    const picks = picksOf.get(ta) || []; picks.push({ name: person.name, userId: person.id }); picksOf.set(ta, picks);
+    closePopup(); ta.focus();
+  }
+  /** Picked names still in the text, once each. */
+  function mentionsIn(ta, text) {
+    const seen = new Set();
+    return (picksOf.get(ta) || []).filter((p) => text.includes('@' + p.name) && !seen.has(p.userId) && seen.add(p.userId));
+  }
   const pendingText = new Map();   // pendingId -> { text, target }
 
   function sendNow(pendingId) {
     const p = pendingText.get(pendingId);
-    vscode.postMessage(Object.assign({ type: 'send', text: p.text, pendingId }, p.target ? { target: p.target } : {}));
+    vscode.postMessage(Object.assign({ type: 'send', text: p.text, pendingId, mentions: p.mentions || [] }, p.target ? { target: p.target } : {}));
   }
   /** Shows the message at once, pending, and asks the host to send it. `target` names a channel post to reply to. */
   function submit(textarea, target, where) {
     const text = textarea.value;
     if (!text.trim()) return;
-    textarea.value = '';
+    const mentions = mentionsIn(textarea, text);
+    textarea.value = ''; picksOf.delete(textarea); closePopup();
     const pendingId = 'pending-' + Date.now() + '-' + (++pendingSeq);
-    pendingText.set(pendingId, { text, target });
+    pendingText.set(pendingId, { text, target, mentions });
     const node = messageEl({ id: pendingId, from: '', mine: true, pending: true, time: new Date().toISOString(), html: escapeHtml(text), reactions: [], attachments: [] });
     byId.set(pendingId, node);
     (typeof where === 'function' ? where() : where || list).append(node);
@@ -193,7 +230,16 @@
   }
   function composerBox(target, where, placeholder) {
     const ta = el('textarea'); ta.rows = 1; ta.placeholder = placeholder || 'Type a message'; ta.disabled = !canSend || readOnly;
-    ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(ta, target, where); } });
+    ta.addEventListener('input', () => lookForMention(ta));
+    ta.addEventListener('blur', () => { if (popup && popup.ta === ta) closePopup(); });
+    ta.addEventListener('keydown', (e) => {
+      if (popup && popup.ta === ta) {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); popup.sel = (popup.sel + (e.key === 'ArrowDown' ? 1 : -1) + popup.items.length) % popup.items.length; drawPopup(); return; }
+        if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pick(popup.sel); return; }
+        if (e.key === 'Escape') { e.preventDefault(); closePopup(); return; }
+      }
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(ta, target, where); }
+    });
     return ta;
   }
   const mainBox = composerBox(null, null);
@@ -203,6 +249,7 @@
     const m = e.data || {};
     if (m.type === 'init') {
       canSend = !!m.canSend;
+      people = (m.people || []).slice().sort((a, b) => a.name.localeCompare(b.name));
       mainBox.placeholder = m.kind === 'channel' ? 'Start a new post' : 'Type a message';
       for (const t of d.querySelectorAll('textarea')) t.disabled = !canSend || readOnly;
     }

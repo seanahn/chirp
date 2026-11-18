@@ -231,3 +231,53 @@ test('a load error shows in the tab', () => {
   p.send({ type: 'messages', reset: true, messages: [m('1')] });
   assert.strictEqual(p.d.querySelector('.load-error'), null, 'gone once it loads');
 });
+
+// ---- @mentions in the message box
+const PEOPLE = [{ id: 'j', name: 'Jordan Lee' }, { id: 'p', name: 'Priya Shah' }, { id: 'm', name: 'Mia Torres' }];
+function typeIn(p, ta, text) { ta.value = text; ta.selectionStart = ta.selectionEnd = text.length; ta.dispatchEvent(new p.w.Event('input', { bubbles: true })); }
+const keyOn = (p, ta, k) => ta.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+
+test('typing @ lists matching members; Enter picks one', () => {
+  const p = page(); p.send(Object.assign({}, INIT, { canSend: true, people: PEOPLE }));
+  const ta = p.d.querySelector('.composer textarea');
+  typeIn(p, ta, 'hello @');
+  assert.deepStrictEqual([...p.d.querySelectorAll('.mention-list .person')].map((x) => x.textContent), ['Jordan Lee', 'Mia Torres', 'Priya Shah']);
+  typeIn(p, ta, 'hello @pri');
+  assert.deepStrictEqual([...p.d.querySelectorAll('.mention-list .person')].map((x) => x.textContent), ['Priya Shah']);
+  keyOn(p, ta, 'Enter');
+  assert.strictEqual(ta.value, 'hello @Priya Shah ');
+  assert.strictEqual(p.d.querySelector('.mention-list'), null, 'the list closes');
+  assert.strictEqual(p.posted.filter((x) => x.type === 'send').length, 0, 'Enter picked, it did not send');
+  typeIn(p, ta, ta.value + 'thanks');
+  keyOn(p, ta, 'Enter');
+  const sent = p.posted.find((x) => x.type === 'send');
+  assert.deepStrictEqual([sent.text, sent.mentions], ['hello @Priya Shah thanks', [{ name: 'Priya Shah', userId: 'p' }]]);
+});
+
+test('arrow keys move, Escape closes, a removed name is not mentioned', () => {
+  const p = page(); p.send(Object.assign({}, INIT, { canSend: true, people: PEOPLE }));
+  const ta = p.d.querySelector('.composer textarea');
+  typeIn(p, ta, '@');
+  keyOn(p, ta, 'ArrowDown');
+  assert.strictEqual(p.d.querySelector('.mention-list .person.selected').textContent, 'Mia Torres');
+  keyOn(p, ta, 'Tab');
+  assert.strictEqual(ta.value, '@Mia Torres ');
+  typeIn(p, ta, 'x @');
+  keyOn(p, ta, 'Escape');
+  assert.strictEqual(p.d.querySelector('.mention-list'), null);
+  keyOn(p, ta, 'Enter');
+  const sent = p.posted.find((x) => x.type === 'send');
+  assert.deepStrictEqual(sent.mentions, [], 'Mia was picked, then her name was typed over');
+});
+
+test('clicking a name picks it; no people, no list', () => {
+  const p = page(); p.send(Object.assign({}, INIT, { canSend: true, people: PEOPLE }));
+  const ta = p.d.querySelector('.composer textarea');
+  typeIn(p, ta, 'cc @jo');
+  p.d.querySelector('.mention-list .person').dispatchEvent(new p.w.MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+  assert.strictEqual(ta.value, 'cc @Jordan Lee ');
+  const q = page(); q.send(Object.assign({}, CINIT, { canSend: true }));
+  const box = q.d.querySelector('.composer textarea');
+  typeIn(q, box, 'hey @');
+  assert.strictEqual(q.d.querySelector('.mention-list'), null, 'channels have no list yet');
+});

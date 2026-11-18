@@ -110,3 +110,10 @@ test('a retry that finds nothing posts', async () => {
   assert.strictEqual(r.ok, true);
   assert.deepStrictEqual(api.calls.map((c) => c[0]), ['chatMessages', 'sendChatMessage']);
 });
+
+test('mentions are sent with a chat message', async () => {
+  const api = fakeApi({});
+  await sender(api).send(CHAT, 'hi @A B', { mentions: [{ name: 'A B', userId: 'ab' }] });
+  assert.strictEqual(api.calls[0][2], 'hi <at id="0">A B</at>');
+  assert.strictEqual(api.calls[0][3][0].mentioned.user.id, 'ab');
+});

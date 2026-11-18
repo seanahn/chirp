@@ -18,7 +18,7 @@ async function chatMessages(g, chatId, { top = 50, next } = {}) {
 }
 
 const markChatRead = (g, chatId, meId, tenantId) => g.post(`/chats/${e(chatId)}/markChatReadForUser`, { user: { id: meId, tenantId } });
-const sendChatMessage = (g, chatId, content) => g.post(`/chats/${e(chatId)}/messages`, html(content));
+const sendChatMessage = (g, chatId, content, mentions) => g.post(`/chats/${e(chatId)}/messages`, mentions && mentions.length ? Object.assign(html(content), { mentions }) : html(content));
 
 async function joinedTeams(g) { const r = await g.get('/me/joinedTeams'); return (r && r.value) || []; }
 async function channels(g, teamId) { const r = await g.get(`/teams/${e(teamId)}/channels`); return (r && r.value) || []; }

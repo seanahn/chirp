@@ -30,3 +30,7 @@ textarea:disabled { opacity: .6; }
 .readonly { font-size: 12px; color: var(--vscode-errorForeground); margin-bottom: 4px; }
 button.retry { font-size: 11px; margin-left: 8px; color: var(--vscode-button-foreground); background: var(--vscode-button-background); border: none; border-radius: 3px; padding: 1px 8px; cursor: pointer; }
 .load-error { margin: 8px 16px 0; padding: 4px 8px; font-size: 12px; color: var(--vscode-errorForeground); border-left: 2px solid var(--vscode-errorForeground); }
+.composer { position: relative; }
+.mention-list { position: absolute; bottom: 100%; left: 16px; min-width: 200px; max-height: 180px; overflow-y: auto; background: var(--vscode-editorSuggestWidget-background, var(--vscode-editorWidget-background)); border: 1px solid var(--vscode-editorSuggestWidget-border, var(--vscode-widget-border, transparent)); border-radius: 4px; padding: 2px 0; z-index: 10; }
+.mention-list .person { padding: 3px 10px; cursor: pointer; }
+.mention-list .person.selected, .mention-list .person:hover { background: var(--vscode-editorSuggestWidget-selectedBackground, var(--vscode-list-activeSelectionBackground)); color: var(--vscode-editorSuggestWidget-selectedForeground, var(--vscode-list-activeSelectionForeground)); }

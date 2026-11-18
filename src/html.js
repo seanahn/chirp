@@ -43,4 +43,29 @@ function sameText(a, b) {
   return n(a) === n(b);
 }
 
-module.exports = { htmlToText, textToHtml, sameText };
+/**
+ * A typed message with picked @names as Teams sends it: each picked "@Name" still in the text becomes <at id="i">Name</at>,
+ * numbered in the order they appear, with the mentions array Graph needs to notify each person.
+ * @param picks [{ name, userId }] from the message box's list
+ * @returns {{ html: string, mentions: object[] }}
+ */
+function withMentions(text, picks) {
+  text = String(text);
+  const found = [];
+  for (const p of picks || []) {
+    const at = '@' + p.name;
+    let i = text.indexOf(at);
+    while (i >= 0 && found.some((f) => i < f.end && i + at.length > f.start)) i = text.indexOf(at, i + 1);
+    if (i >= 0) found.push({ start: i, end: i + at.length, pick: p });
+  }
+  found.sort((a, b) => a.start - b.start);
+  let html = '', pos = 0;
+  const mentions = found.map((f, id) => {
+    html += textToHtml(text.slice(pos, f.start)) + `<at id="${id}">${textToHtml(f.pick.name)}</at>`;
+    pos = f.end;
+    return { id, mentionText: f.pick.name, mentioned: { user: { id: f.pick.userId, displayName: f.pick.name, userIdentityType: 'aadUser' } } };
+  });
+  return { html: html + textToHtml(text.slice(pos)), mentions };
+}
+
+module.exports = { htmlToText, textToHtml, sameText, withMentions };

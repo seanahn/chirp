@@ -513,3 +513,16 @@ test('conversation tabs carry the Teams icon', async () => {
   assert.ok(restored.iconPath && /teams-tab\.svg$/.test(restored.iconPath.fsPath), 'a tab restored after a reload');
   assert.ok(fs.existsSync(panel.iconPath.fsPath), 'the image exists');
 });
+
+// ---- @mentions from chirp's message box
+test('a chat tab offers its other members, and sends real mentions', async () => {
+  ui.focused = true; ui.panels.length = 0;
+  const h = start(chatWorld()); ui.resolveSidebar(); await settle();
+  const panel = await openTab(h, PLAT);
+  assert.deepStrictEqual(panel.webview.posted.find((x) => x.type === 'init').people, [{ id: 'b', name: 'Ben Carter' }], 'members other than Sean');
+  panel.webview._receive({ type: 'send', text: 'ping @Ben Carter', pendingId: 'p1', mentions: [{ name: 'Ben Carter', userId: 'b' }] }); await settle();
+  const post = h.fetch.calls.find((c) => c.method === 'POST' && c.path.endsWith('/messages'));
+  const body = JSON.parse(post.body);
+  assert.strictEqual(body.body.content, 'ping <at id="0">Ben Carter</at>');
+  assert.strictEqual(body.mentions[0].mentioned.user.id, 'b');
+});

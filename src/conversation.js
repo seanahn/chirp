@@ -165,7 +165,7 @@ class Conversations {
     tab.next = next;
     const conv = this.conv(tab);
     tab.panel.title = this.titleFor(tab.ref);
-    tab.panel.webview.postMessage({ type: 'init', ref: tab.ref, title: tab.panel.title, members: conv.members || [], kind: conv.kind, me: { id: me.id }, canSend: this.canSend(tab) });
+    tab.panel.webview.postMessage({ type: 'init', ref: tab.ref, title: tab.panel.title, members: conv.members || [], kind: conv.kind, me: { id: me.id }, canSend: this.canSend(tab), people: this.people(tab, me.id) });
     tab.panel.webview.postMessage({ type: 'messages', reset: true, more: !!next, messages: tab.messages.map((x) => viewMessage(x, me.id)) });
     const file = this.mirror.write(conv, tab.messages);
     if (this.front === tab || tab.panel.active) { this.front = tab; this.mirror.setCurrent(file); }
@@ -178,6 +178,14 @@ class Conversations {
 
   /** A channel tab turns read-only for good once Teams refuses a post there (403). */
   canSend(tab) { return !tab.readOnly; }
+
+  /** The people a chat's message box offers after @: its members other than Sean, by name. Channels: none yet. */
+  people(tab, meId) {
+    if (tab.ref.kind !== 'chat') return [];
+    const chat = this.getChat(tab.ref.id);
+    return ((chat && chat.members) || []).filter((m) => m.userId && m.userId !== meId && m.displayName)
+      .map((m) => ({ id: m.userId, name: m.displayName })).sort((a, b) => a.name.localeCompare(b.name));
+  }
 
   /** New, edited and (for posts) newly replied-to messages since the last poll. */
   async poll(key) {
@@ -232,7 +240,8 @@ class Conversations {
     tab.attempts = tab.attempts || new Map();
     const since = tab.attempts.get(m.pendingId);
     if (since == null) tab.attempts.set(m.pendingId, Date.now());
-    const r = await sender.send(target, text, since == null ? {} : { since });
+    const picks = Array.isArray(m.mentions) ? m.mentions.filter((x) => x && typeof x.name === 'string' && typeof x.userId === 'string') : [];
+    const r = await sender.send(target, text, Object.assign(since == null ? {} : { since }, picks.length ? { mentions: picks } : {}));
     if (r.ok) tab.attempts.delete(m.pendingId);
     if (!r.ok) {
       if (r.forbidden && tab.ref.kind === 'channel') tab.readOnly = true;

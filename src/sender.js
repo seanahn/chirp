@@ -4,15 +4,15 @@
 // for this one before Retry is offered.
 const { GraphError, GraphTimeout } = require('./graph');
 const { Offline } = require('./tokenStore');
-const { textToHtml, htmlToText, sameText } = require('./html');
+const { textToHtml, htmlToText, sameText, withMentions } = require('./html');
 
 const RETRY_AFTER_DEFAULT_MS = 5000;
 const SKEW_MS = 5000;
 const CHECK_LATEST = 20;
 
 function createSender({ api, g, meId, now = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
-  function post(target, html) {
-    if (target.kind === 'chat') return api.sendChatMessage(g, target.chatId, html);
+  function post(target, html, mentions) {
+    if (target.kind === 'chat') return mentions && mentions.length ? api.sendChatMessage(g, target.chatId, html, mentions) : api.sendChatMessage(g, target.chatId, html);
     if (target.kind === 'post') return api.postChannelMessage(g, target.teamId, target.channelId, html);
     return api.replyToPost(g, target.teamId, target.channelId, target.postId, html);
   }
@@ -35,8 +35,10 @@ function createSender({ api, g, meId, now = Date.now, sleep = (ms) => new Promis
    * @param opts.since  for a Retry: when the first attempt began. The earlier attempt is looked for first, and nothing is
    *                    posted if that check can't be made, so a Retry never doubles a message that did go out.
    */
-  async function send(target, text, { since } = {}) {
-    const html = textToHtml(text);
+  async function send(target, text, { since, mentions: picks } = {}) {
+    // mentions are for chats only, for now
+    const built = target.kind === 'chat' && picks && picks.length ? withMentions(text, picks) : { html: textToHtml(text), mentions: [] };
+    const html = built.html;
     if (since != null) {
       const c = await check(target, text, since);
       if (c.failed) return fail(null, { error: 'Not sent (could not check whether the first try went out)' });
@@ -46,7 +48,7 @@ function createSender({ api, g, meId, now = Date.now, sleep = (ms) => new Promis
     let resent = false;
     for (;;) {
       try {
-        return { ok: true, message: await post(target, html) };
+        return { ok: true, message: await post(target, html, built.mentions) };
       } catch (e) {
         if (e instanceof GraphError && (e.status === 429 || e.status === 503) && !resent) {
           resent = true;

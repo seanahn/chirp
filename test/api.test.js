@@ -75,3 +75,12 @@ test('me', async () => {
   const g = fakeG(() => ({ id: 'u', displayName: 'Sean Ahn', mail: 'x' }));
   assert.deepStrictEqual(await api.me(g), { id: 'u', displayName: 'Sean Ahn' });
 });
+
+test('sendChatMessage carries mentions when given', async () => {
+  const g = fakeG(() => ({ id: 'n' }));
+  const m = [{ id: 0, mentionText: 'A', mentioned: { user: { id: 'a', displayName: 'A', userIdentityType: 'aadUser' } } }];
+  await api.sendChatMessage(g, CHAT, '<at id="0">A</at>', m);
+  assert.deepStrictEqual(g.calls[0].body, { body: { contentType: 'html', content: '<at id="0">A</at>' }, mentions: m });
+  await api.sendChatMessage(g, CHAT, 'x');
+  assert.deepStrictEqual(g.calls[1].body, { body: { contentType: 'html', content: 'x' } }, 'no mentions key without mentions');
+});
