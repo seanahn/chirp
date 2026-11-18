@@ -270,6 +270,8 @@ the reason shown.
 | What | How often (window focused) | Graph call (v1.0) |
 | --- | --- | --- |
 | Chat list | 30 s | `/me/chats?$expand=lastMessagePreview,members&$orderby=lastMessagePreview/createdDateTime desc`; each chat's `viewpoint.lastMessageReadDateTime` decides unread |
+
+The chat list is the **50 most recently active chats**, by Sean's choice (2026-11-18). A full list was tried: every chat, merged and refreshed every 30 minutes, with chats nobody wrote in left out. It brought in hundreds of old and meeting chats he didn't recognize, and he preferred the short list. That version is on the local branch `all-chats`. An older chat comes back to the top as soon as someone writes in it.
 | Chat mentions | with the chat list | for each chat whose last message changed since the last poll, fetch its new messages and check `mentions` for Sean's user id |
 | Channel mentions | 60 s | one search: `POST /search/query` with entity type `chatMessage`, recent messages matching Sean's name; each hit in a channel is fetched and kept only if its `mentions` include Sean's user id |
 | Teams and channels list | on start and every 30 min | `/me/joinedTeams`, `/teams/{id}/channels` |
