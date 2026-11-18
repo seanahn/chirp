@@ -165,6 +165,7 @@ class Conversations {
     tab.next = next;
     const conv = this.conv(tab);
     tab.panel.title = this.titleFor(tab.ref);
+    tab.header = this.headerOf(tab, conv, me.id);
     tab.panel.webview.postMessage({ type: 'init', ref: tab.ref, title: tab.panel.title, members: conv.members || [], kind: conv.kind, me: { id: me.id }, canSend: this.canSend(tab), people: this.people(tab, me.id) });
     tab.panel.webview.postMessage({ type: 'messages', reset: true, more: !!next, messages: tab.messages.map((x) => viewMessage(x, me.id)) });
     const file = this.mirror.write(conv, tab.messages);
@@ -187,12 +188,27 @@ class Conversations {
       .map((m) => ({ id: m.userId, name: m.displayName })).sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  /** What the tab's header shows; compared on each poll, so someone added to the chat or a renamed chat shows up. */
+  headerOf(tab, conv, meId) {
+    return JSON.stringify({ title: this.titleFor(tab.ref), members: conv.members || [], people: this.people(tab, meId) });
+  }
+  refreshHeader(tab, meId) {
+    const conv = this.conv(tab);
+    const h = this.headerOf(tab, conv, meId);
+    if (h === tab.header) return;
+    tab.header = h;
+    const v = JSON.parse(h);
+    tab.panel.title = v.title;
+    tab.panel.webview.postMessage(Object.assign({ type: 'header' }, v));
+  }
+
   /** New, edited and (for posts) newly replied-to messages since the last poll. */
   async poll(key) {
     const tab = this.tabs.get(key);
     if (!tab) return;
     if (!tab.loaded) return this.load(tab);
     const me = await this.me();
+    this.refreshHeader(tab, me.id);
     const { items } = await this.fetchPage(tab);
     const known = new Map(tab.messages.map((x, i) => [x.id, i]));
     const changed = [], fresh = [], removed = [];

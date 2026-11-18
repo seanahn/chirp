@@ -124,6 +124,9 @@ Opening a chat that already has a tab focuses that tab.
     `mentions` array), so that person is notified. A Retry carries the
     mentions too.
   - Not in channels yet, and only people already in the chat.
+  - The tab checks the chat's members on every poll. Someone added
+    later appears in the @ list, the header and the tab title without
+    reopening it.
 
 **Read state** *(builder's call)*: a chat is marked read in Teams
 (`markChatReadForUser`) when its tab is visible and the VS Code window has

@@ -281,3 +281,13 @@ test('clicking a name picks it; no people, no list', () => {
   typeIn(q, box, 'hey @');
   assert.strictEqual(q.d.querySelector('.mention-list'), null, 'channels have no list yet');
 });
+
+test('a header update refreshes the title, members and @ list', () => {
+  const p = page(); p.send(Object.assign({}, INIT, { canSend: true, people: [{ id: 'j', name: 'Jordan Lee' }] }));
+  p.send({ type: 'header', title: 'Jordan, Mia', members: ['Jordan Lee', 'Mia Torres', 'Sean Ahn'], people: [{ id: 'j', name: 'Jordan Lee' }, { id: 'm', name: 'Mia Torres' }] });
+  assert.strictEqual(p.d.querySelector('.header .title').textContent, 'Jordan, Mia');
+  assert.strictEqual(p.d.querySelector('.header .members').textContent, 'Jordan Lee, Mia Torres, Sean Ahn');
+  const ta = p.d.querySelector('.composer textarea');
+  typeIn(p, ta, '@mi');
+  assert.deepStrictEqual([...p.d.querySelectorAll('.mention-list .person')].map((x) => x.textContent), ['Mia Torres']);
+});

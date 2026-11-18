@@ -151,6 +151,10 @@
       members.textContent = (m.members || []).join(', ');
       vscode.setState({ ref: m.ref });
       d.title = m.title;
+    } else if (m.type === 'header') {
+      title.textContent = m.title; d.title = m.title;
+      members.textContent = (m.members || []).join(', ');
+      people = (m.people || []).slice().sort((a, b) => a.name.localeCompare(b.name));
     } else if (m.type === 'error') {
       let e2 = d.querySelector('.load-error');
       if (!e2) { e2 = el('div', 'load-error'); header.after(e2); }

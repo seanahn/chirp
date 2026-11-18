@@ -526,3 +526,22 @@ test('a chat tab offers its other members, and sends real mentions', async () =>
   assert.strictEqual(body.body.content, 'ping <at id="0">Ben Carter</at>');
   assert.strictEqual(body.mentions[0].mentioned.user.id, 'b');
 });
+
+test('someone added to the chat shows up in the open tab: title, header and @ list', async () => {
+  ui.focused = true; ui.panels.length = 0;
+  const w = chatWorld(); w.chats[0].topic = null;
+  const h = start(w); ui.resolveSidebar(); await settle();
+  const panel = await openTab(h, PLAT);
+  assert.deepStrictEqual(panel.webview.posted.find((x) => x.type === 'init').people.map((p) => p.name), ['Ben Carter']);
+  w.chats[0].members.push(mem('n', 'Mia Torres'));
+  await h.api.refresh();
+  await h.api.conversations.poll('chat:' + PLAT);
+  const upd = panel.webview.posted.filter((x) => x.type === 'header').at(-1);
+  assert.ok(upd, 'the tab is told');
+  assert.deepStrictEqual(upd.people.map((p) => p.name), ['Ben Carter', 'Mia Torres']);
+  assert.strictEqual(upd.title, 'Ben, Mia');
+  assert.strictEqual(panel.title, 'Ben, Mia');
+  const n = panel.webview.posted.filter((x) => x.type === 'header').length;
+  await h.api.conversations.poll('chat:' + PLAT);
+  assert.strictEqual(panel.webview.posted.filter((x) => x.type === 'header').length, n, 'nothing new, nothing sent');
+});
