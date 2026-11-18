@@ -194,3 +194,9 @@ test('the Teams section by channel state', () => {
   assert.strictEqual(p.d.querySelector('.channels-note').hidden, true);
   assert.strictEqual(p.d.querySelectorAll('.teams .row.team').length, 1);
 });
+
+test('no Enable channels button while a sign-in is under way', () => {
+  const p = page();
+  p.send(state({ signIn: { stage: 'waiting' }, account: { username: 'a@b.com', method: 'editor' }, channels: 'off' }));
+  assert.strictEqual(btn(p, 'Enable channels'), undefined);
+});

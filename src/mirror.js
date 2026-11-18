@@ -102,6 +102,11 @@ function createMirror({ dir, enabled = () => true }) {
     /** Deletes every file this mirror wrote, and current.teams (signing out). Other files in the directory stay. */
     clearAll() {
       for (const e of entries.values()) { try { fs.unlinkSync(e.path); } catch (_) { /* already gone */ } }
+      // and those from earlier sessions or other windows: every .teams file under chats/ and channels/
+      for (const sub of ['chats', 'channels']) {
+        let names = []; try { names = fs.readdirSync(path.join(dir, sub)); } catch (_) { /* none */ }
+        for (const n of names) if (n.endsWith('.teams')) { try { fs.unlinkSync(path.join(dir, sub, n)); } catch (_) { /* gone */ } }
+      }
       try { fs.unlinkSync(path.join(dir, 'current.teams')); } catch (_) { /* none */ }
       entries.clear(); current = null;
     },

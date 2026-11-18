@@ -194,3 +194,12 @@ test('clearAll removes what it wrote', () => {
   assert.ok(fs.existsSync(path.join(dir, 'chats', 'someone-elses.txt')), 'only chirp\'s own files');
   assert.strictEqual(m.pathFor(CHAT.id), null);
 });
+
+test('clearAll also removes conversation files from earlier sessions', () => {
+  const dir = mk();
+  const old = createMirror({ dir });
+  const a = old.write(CHAT, []);
+  const fresh = createMirror({ dir });   // a later session: it never wrote that file
+  fresh.clearAll();
+  assert.strictEqual(fs.existsSync(a), false);
+});

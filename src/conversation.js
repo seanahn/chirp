@@ -168,6 +168,7 @@ class Conversations {
     tab.header = this.headerOf(tab, conv, me.id);
     tab.panel.webview.postMessage({ type: 'init', ref: tab.ref, title: tab.panel.title, members: conv.members || [], kind: conv.kind, me: { id: me.id }, canSend: this.canSend(tab), people: this.people(tab, me.id) });
     tab.panel.webview.postMessage({ type: 'messages', reset: true, more: !!next, messages: tab.messages.map((x) => viewMessage(x, me.id)) });
+    if (!this.tabs.has(tab.key)) return;   // closed meanwhile (signing out): nothing is written
     const file = this.mirror.write(conv, tab.messages);
     if (this.front === tab || tab.panel.active) { this.front = tab; this.mirror.setCurrent(file); }
     this.onOpened(tab.key);
@@ -219,6 +220,7 @@ class Conversations {
       if (signature(m) !== signature(tab.messages[i])) { tab.messages[i] = m; changed.push(m); }
     }
     if (!fresh.length && !changed.length && !removed.length) return;
+    if (!this.tabs.has(tab.key)) return;   // closed meanwhile
     if (removed.length) {
       tab.messages = tab.messages.filter((x) => !removed.includes(x.id));
       tab.panel.webview.postMessage({ type: 'removed', ids: removed });

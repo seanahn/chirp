@@ -41,7 +41,7 @@
   /** The Teams section before channels are enabled, or when they can't be. */
   function renderChannels() {
     const c = state.channels;
-    if (!state.account || c === 'enabled' || !c) { channelsNote.hidden = true; channelsNote.replaceChildren(); return; }
+    if (!state.account || c === 'enabled' || !c || (state.signIn && c === 'off')) { channelsNote.hidden = true; channelsNote.replaceChildren(); return; }
     channelsNote.hidden = false;
     if (c === 'off') channelsNote.replaceChildren(button('Enable channels', 'enableChannels'));
     else if (c === 'failed') channelsNote.replaceChildren(el('div', null, "Channels weren't enabled. If your company requires an admin to approve chirp, send them this link."), button('Copy admin link', 'copyAdminLink'), button('Try again', 'enableChannels'));

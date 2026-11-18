@@ -38,8 +38,12 @@ otherwise the editor's sign-in; otherwise a sign-in code.
 
 - **Commands:** **chirp: Sign In** and **chirp: Sign Out**, also in the
   sidebar's title bar.
-- **Signing out** deletes chirp's own tokens, the cached lists, and the
-  files chirp wrote under `~/.chirp`. It never changes a token file.
+- **Signing out** deletes the cached lists and the conversation files
+  under `~/.chirp`, and chirp stays signed out until you sign in again.
+  - With a sign-in code, it also deletes chirp's tokens.
+  - With the editor's sign-in, the account stays in the editor's Accounts
+    menu (remove it there if you want), but chirp stops using it.
+  - It never changes a token file.
 - **The token file** is JSON with `access_token`, `refresh_token`,
   `client_id`, `tenant_id` and `expires_at` (Unix seconds). chirp
   refreshes it in place, using that file's own `client_id`.
@@ -69,7 +73,8 @@ Each open conversation is written as plain text to `~/.chirp/chats/` or
 `~/.chirp/channels/`, and `~/.chirp/current.teams` is the one most
 recently in front. The files are readable only by you. This lets an
 agent beside chirp know which conversation you mean by "the chat". Set
-`chirp.agentFiles` to `false` to turn it off.
+`chirp.agentFiles` to `false` to turn it off; the files are deleted
+when you do.
 
 ## Install from source
 

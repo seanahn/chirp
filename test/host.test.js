@@ -694,11 +694,11 @@ test('turning agent files off stops writing at once', async () => {
   const h = start(chatWorld()); ui.resolveSidebar(); await settle();
   await openTab(h, PLAT);
   const file = path.join(h.dir, '.chirp', 'chats', `Design Team Chat ${shortId(PLAT)}.teams`);
-  const before = fs.readFileSync(file, 'utf8');
+  assert.ok(fs.existsSync(file));
   ui.setConfig('chirp.agentFiles', false); await settle();
   h.world.messages[PLAT].unshift(msg('m9', 'b', '2026-11-17T13:00:00Z', 'after'));
   await h.api.conversations.poll('chat:' + PLAT);
-  assert.strictEqual(fs.readFileSync(file, 'utf8'), before, 'no file changed');
+  assert.strictEqual(fs.existsSync(file), false, 'deleted when turned off, and not written again');
   assert.strictEqual(await ui.commands['chirp.activeConversationFile'](), null);
 });
 
@@ -710,6 +710,133 @@ test('sign out deletes chirp\'s files', async () => {
   const file = path.join(h.dir, '.chirp', 'chats', `Design Team Chat ${shortId(PLAT)}.teams`);
   assert.ok(fs.existsSync(file));
   await ui.commands['chirp.signOut'](); await settle();
+  assert.strictEqual(fs.existsSync(file), false);
+  assert.strictEqual(fs.existsSync(path.join(h.dir, '.chirp', 'current.teams')), false);
+});
+
+// ---- from the final review (sign-in)
+function startWithTicks(world, o = {}) {
+  const ticks = [];
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'chirp-host-'));
+  const tokenFile = path.join(dir, 'token.json');
+  fs.writeFileSync(tokenFile, JSON.stringify({ access_token: o.token || MY_TOKEN, refresh_token: 'r', client_id: 'c', tenant_id: 'tid', expires_at: Date.now() / 1000 + 3600 }));
+  world.marked = []; world.messages = world.messages || {};
+  const fetch = graph(world);
+  const context = { extensionUri: { fsPath: path.join(__dirname, '..') }, globalState: o.memento || memento(), subscriptions: [] };
+  ui.config['chirp.signIn.method'] = o.method || 'auto';
+  ui.config['chirp.signIn.tokenFile'] = o.method && o.method !== 'tokenFile' ? '' : tokenFile;
+  ui.config['chirp.agentFiles'] = true;
+  const api = ext.activate(context, { fetch, chirpDir: path.join(dir, '.chirp'), watchFile: () => {}, unwatchFile: () => {}, setInterval: (fn) => { ticks.push(fn); return ticks.length; }, clearInterval: () => {}, secrets: o.secrets || secrets(), sleep: async () => {}, clientId: 'cid' });
+  const h = { api, fetch, dir, context, world, ticks, tokenFile };
+  running.push(h);
+  return h;
+}
+
+test('Sign Out with a token file stays signed out until Sign In', async () => {
+  ui.focused = true;
+  const h = startWithTicks(chatWorld()); const view = ui.resolveSidebar(); await settle();
+  assert.ok(lastState(view).account);
+  await ui.commands['chirp.signOut'](); await settle();
+  for (const t of h.ticks) await t();
+  await settle();
+  assert.deepStrictEqual(signInState(view), { stage: 'signedOut' }, 'the recheck did not sign back in');
+  assert.strictEqual(lastState(view).account, null);
+  await ui.commands['chirp.signIn'](); await settle();
+  assert.ok(lastState(view).account, 'an explicit Sign In does');
+});
+
+test('signed out by the user stays signed out after a reload', async () => {
+  ui.focused = true;
+  const mem = memento();
+  const h = startWithTicks(chatWorld(), { memento: mem }); ui.resolveSidebar(); await settle();
+  await ui.commands['chirp.signOut'](); await settle();
+  h.api.dispose();
+  const h2 = startWithTicks(chatWorld(), { memento: mem }); const view = ui.resolveSidebar(); await settle();
+  assert.deepStrictEqual(signInState(view), { stage: 'signedOut' });
+  assert.ok(!h2.fetch.calls.some((c) => c.path.startsWith('/me')), 'no Graph calls');
+});
+
+test('a different account through any path clears the old one first', async () => {
+  ui.focused = true;
+  const mem = memento();
+  await mem.update('chirp.lists', { me: { id: 'someone-else', displayName: 'X' }, chats: [chat('zzz')], teams: [] });
+  await mem.update('chirp.mentions', { flagged: { 'chat:zzz': 'm1' }, seen: [], baseline: 1 });
+  const h = startWithTicks(chatWorld(), { memento: mem }); const view = ui.resolveSidebar(); await settle();
+  assert.strictEqual(h.api.state.me.id, 'me', 'start-up fetched who this login is');
+  assert.deepStrictEqual(h.api.mentions.flagged(), [], 'the other account\'s mentions went');
+  assert.ok(!lastState(view).chats.some((r) => r.id === 'zzz'));
+});
+
+test('Enable channels can\'t start twice, or while signed out', async () => {
+  ui.focused = true;
+  const w = channelWorld();
+  const h = start(w, { method: 'deviceCode' }); const view = ui.resolveSidebar(); await settle();
+  await ui.commands['chirp.enableChannels'](); await settle();
+  assert.strictEqual(h.fetch.calls.filter((c) => c.path === 'login:devicecode').length, 0, 'signed out: nothing happens');
+  assert.deepStrictEqual(signInState(view), { stage: 'signedOut' }, 'the Sign in button stays');
+  await ui.commands['chirp.signIn'](); await settle();
+  let release; w.loginAnswers = [];
+  const gate = new Promise((r) => { release = r; });
+  const origFail = w.fail;
+  w.fail = async (p) => undefined;
+  const first = ui.commands['chirp.enableChannels']();
+  const second = ui.commands['chirp.enableChannels']();
+  await Promise.all([first, second]); await settle();
+  assert.strictEqual(h.fetch.calls.filter((c) => c.path === 'login:devicecode').length, 2, 'sign-in once, channels once');
+  w.fail = origFail; release();
+});
+
+test('a poll finishing after Sign Out leaves nothing behind', async () => {
+  ui.focused = true;
+  const w = chatWorld();
+  const h = start(w, { method: 'deviceCode' }); const view = ui.resolveSidebar(); await settle();
+  await ui.commands['chirp.signIn'](); await settle();
+  let release; const gate = new Promise((r) => { release = r; });
+  w.fail = (p) => (p.startsWith('/me/chats') ? gate.then(() => undefined) : undefined);
+  const polling = h.api.refresh();
+  await settle();
+  await ui.commands['chirp.signOut'](); await settle();
+  delete w.fail; release(); await polling; await settle();
+  assert.deepStrictEqual(lastState(view).chats, [], 'the late answer was dropped');
+  assert.strictEqual(h.context.globalState.get('chirp.lists'), undefined, 'and not cached');
+});
+
+test('a start-up failure says so and offers Sign in', async () => {
+  ui.focused = true;
+  const sec = secrets(); sec.get = async () => { throw new Error('keyring locked'); };
+  start(chatWorld(), { method: 'deviceCode', secrets: sec }); const view = ui.resolveSidebar(); await settle();
+  assert.deepStrictEqual(signInState(view), { stage: 'signedOut' });
+  assert.strictEqual(lastState(view).status.kind, 'error');
+  assert.match(lastState(view).status.text, /keyring locked/);
+});
+
+test('the token-file method with no file set says what to do', async () => {
+  ui.focused = true;
+  start(chatWorld(), { method: 'tokenFile' }); ui.config['chirp.signIn.tokenFile'] = '';
+  ui.setConfig('chirp.signIn.method', 'tokenFile'); await settle();
+  const view = ui.resolveSidebar(); await settle();
+  assert.deepStrictEqual(lastState(view).status, { kind: 'signin', text: 'Set chirp.signIn.tokenFile to the token file to use.' });
+});
+
+test('losing the login while signed in says so', async () => {
+  ui.focused = true;
+  const sec = secrets();
+  const w = chatWorld();
+  const h = start(w, { method: 'deviceCode', secrets: sec }); const view = ui.resolveSidebar(); await settle();
+  await ui.commands['chirp.signIn'](); await settle();
+  await sec.delete('chirp.deviceCode.tokens');
+  await h.api.refresh(); await settle();
+  assert.deepStrictEqual(signInState(view), { stage: 'signedOut' });
+  assert.deepStrictEqual(lastState(view).status, { kind: 'signin', text: 'Signed out: sign in again' });
+});
+
+test('turning agent files off deletes them', async () => {
+  ui.focused = true; ui.panels.length = 0;
+  const h = start(chatWorld()); ui.resolveSidebar(); await settle();
+  await openTab(h, PLAT);
+  const file = path.join(h.dir, '.chirp', 'chats', `Design Team Chat ${shortId(PLAT)}.teams`);
+  assert.ok(fs.existsSync(file));
+  ui.setConfig('chirp.agentFiles', false); await settle();
   assert.strictEqual(fs.existsSync(file), false);
   assert.strictEqual(fs.existsSync(path.join(h.dir, '.chirp', 'current.teams')), false);
 });
