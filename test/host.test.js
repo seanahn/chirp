@@ -502,3 +502,14 @@ test('Refresh while signed out recovers', async () => {
   assert.strictEqual(lastState(view).status, null);
   assert.strictEqual(h.api.state.signedOut, false, 'signed back in: the pollers run again');
 });
+
+test('conversation tabs carry the Teams icon', async () => {
+  ui.focused = true; ui.panels.length = 0;
+  const h = start(chatWorld()); ui.resolveSidebar(); await settle();
+  const panel = await openTab(h, PLAT);
+  assert.ok(panel.iconPath && /media[\\/]teams-tab\.svg$/.test(panel.iconPath.fsPath), 'a chat tab');
+  const restored = require('vscode').window.createWebviewPanel('chirp.conversation', 'old', 1, {});
+  await ui.serializer.deserializeWebviewPanel(restored, { ref: { kind: 'chat', id: PLAT } });
+  assert.ok(restored.iconPath && /teams-tab\.svg$/.test(restored.iconPath.fsPath), 'a tab restored after a reload');
+  assert.ok(fs.existsSync(panel.iconPath.fsPath), 'the image exists');
+});

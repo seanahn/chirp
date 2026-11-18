@@ -93,6 +93,7 @@ class Conversations {
     const tab = { key, ref: this.named(ref), panel, messages: [], next: null, pendingRead: false, loaded: false, poller: null };
     this.tabs.set(key, tab);
     panel.title = this.titleFor(tab.ref);
+    panel.iconPath = vscode.Uri.joinPath(this.extensionUri, 'media', 'teams-tab.svg');
     panel.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'media')] };
     panel.webview.html = this.html(panel.webview);
     panel.webview.onDidReceiveMessage((m) => this.receive(tab, m).catch((e) => this.log(e)));

@@ -99,6 +99,9 @@ Enter opens, and the filter box can be focused with a key.
 ### A chat tab
 
 Clicking a chat opens it as an editor tab titled with the chat's name.
+Every chirp tab, chat or channel, carries the Teams-like icon in Teams
+purple (`media/teams-tab.svg`), because VS Code doesn't recolor tab
+icons for the theme.
 Opening a chat that already has a tab focuses that tab.
 
 - Header: chat name and the people in it.
