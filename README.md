@@ -55,7 +55,7 @@ so chats never wait on channels:
 | **Enable channels** (a button in the sidebar) | `Team.ReadBasic.All`, `Channel.ReadBasic.All`, `ChannelMessage.Read.All`, `ChannelMessage.Send` | your teams and channels, reading and posting in them, channel mentions | `ChannelMessage.Read.All` needs an admin |
 
 - If your company requires an admin to approve chirp, send them this link:
-  `https://login.microsoftonline.com/organizations/adminconsent?client_id=00000000-0000-0000-0000-000000000000`
+  `https://login.microsoftonline.com/organizations/adminconsent?client_id=5d0faf94-77bc-41c5-8c4f-73bacc2040ff`
   (also under **Copy admin link** in the sidebar).
 - chirp's app is from an unverified publisher. Many companies block
   users from approving such apps, and there even the first step needs an
