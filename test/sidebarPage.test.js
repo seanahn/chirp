@@ -124,3 +124,73 @@ test('teams expand to channels; channels never bold', () => {
   const f = p.d.querySelector('input.filter'); f.value = 'chirp'; f.dispatchEvent(new p.w.Event('input'));
   assert.deepStrictEqual(names(), ['Product Team', 'chirp-test']);
 });
+
+// ---- sign-in states (sign-in plan, Task 6)
+const btn = (p, label) => [...p.d.querySelectorAll('button')].find((b) => b.textContent === label);
+const click = (p, el) => el.dispatchEvent(new p.w.MouseEvent('click', { bubbles: true }));
+
+test('signed out: a sign-in button in place of the lists', () => {
+  const p = page();
+  p.send(state({ signIn: { stage: 'signedOut' }, account: null, chats: [row({ id: 'a' })] }));
+  assert.ok(btn(p, 'Sign in to Microsoft'));
+  assert.strictEqual(p.d.querySelector('.chats').hidden, true, 'the lists are hidden while signed out');
+  assert.strictEqual(p.d.querySelector('.teams').hidden, true);
+  click(p, btn(p, 'Sign in to Microsoft'));
+  assert.deepStrictEqual(p.posted.at(-1), { type: 'signIn' });
+});
+
+test('waiting: the message and Cancel', () => {
+  const p = page();
+  p.send(state({ signIn: { stage: 'waiting' }, account: null }));
+  assert.ok(p.d.querySelector('.signin').textContent.includes('Waiting for sign-in in the browser…'));
+  click(p, btn(p, 'Cancel'));
+  assert.deepStrictEqual(p.posted.at(-1), { type: 'cancelSignIn' });
+});
+
+test('a sign-in code: large, copy and open, where to enter it', () => {
+  const p = page();
+  p.send(state({ signIn: { stage: 'code', userCode: 'ABCD-1234', verificationUri: 'https://microsoft.com/devicelogin' }, account: null }));
+  assert.strictEqual(p.d.querySelector('.signin .code').textContent, 'ABCD-1234');
+  assert.ok(p.d.querySelector('.signin').textContent.includes('Enter it at https://microsoft.com/devicelogin'));
+  click(p, btn(p, 'Copy code & open'));
+  assert.deepStrictEqual(p.posted.at(-1), { type: 'copyCode' });
+  click(p, btn(p, 'Cancel'));
+  assert.deepStrictEqual(p.posted.at(-1), { type: 'cancelSignIn' });
+});
+
+test('the user code is text, never html', () => {
+  const p = page();
+  p.send(state({ signIn: { stage: 'code', userCode: '<img src=x onerror="window.pwned=1">', verificationUri: '<b>x</b>' }, account: null }));
+  assert.strictEqual(p.d.querySelector('img'), null);
+  assert.strictEqual(p.w.pwned, undefined);
+});
+
+test('the account line names the method', () => {
+  const p = page();
+  for (const [method, shown] of [['editor', 'editor'], ['deviceCode', 'sign-in code'], ['tokenFile', 'token file']]) {
+    p.send(state({ signIn: null, account: { username: 'alex@contoso.com', method } }));
+    assert.strictEqual(p.d.querySelector('.account').textContent, `Signed in as alex@contoso.com (${shown})`);
+  }
+  p.send(state({ signIn: null, account: null }));
+  assert.strictEqual(p.d.querySelector('.account').hidden, true);
+});
+
+test('the Teams section by channel state', () => {
+  const p = page();
+  const signedIn = { signIn: null, account: { username: 'a@b.com', method: 'editor' } };
+  p.send(state(Object.assign({ channels: 'off' }, signedIn)));
+  click(p, btn(p, 'Enable channels'));
+  assert.deepStrictEqual(p.posted.at(-1), { type: 'enableChannels' });
+  p.send(state(Object.assign({ channels: 'failed' }, signedIn)));
+  assert.ok(p.d.querySelector('.channels-note').textContent.includes("Channels weren't enabled. If your company requires an admin to approve chirp, send them this link."));
+  click(p, btn(p, 'Copy admin link'));
+  assert.deepStrictEqual(p.posted.at(-1), { type: 'copyAdminLink' });
+  click(p, btn(p, 'Try again'));
+  assert.deepStrictEqual(p.posted.at(-1), { type: 'enableChannels' });
+  p.send(state(Object.assign({ channels: 'forbidden' }, signedIn)));
+  assert.strictEqual(p.d.querySelector('.channels-note').textContent, "Channels need permissions this login doesn't have.");
+  assert.strictEqual(btn(p, 'Enable channels'), undefined);
+  p.send(state(Object.assign({ channels: 'enabled', teams: [{ id: 'T', name: 'Team', channels: [] }] }, signedIn)));
+  assert.strictEqual(p.d.querySelector('.channels-note').hidden, true);
+  assert.strictEqual(p.d.querySelectorAll('.teams .row.team').length, 1);
+});

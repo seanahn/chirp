@@ -3,6 +3,9 @@
 const vscode = require('vscode');
 const crypto = require('crypto');
 
+// the page's buttons, and the commands they run
+const ACTIONS = { signIn: 'chirp.signIn', cancelSignIn: 'chirp.cancelSignIn', copyCode: 'chirp.copyCode', enableChannels: 'chirp.enableChannels', copyAdminLink: 'chirp.copyAdminLink' };
+
 class Sidebar {
   constructor(extensionUri, { meName = () => '' } = {}) {
     this.extensionUri = extensionUri;
@@ -26,6 +29,7 @@ class Sidebar {
     view.webview.onDidReceiveMessage((m) => {
       if (m && m.type === 'ready') this.post();
       else if (m && m.type === 'open' && m.ref) for (const fn of this.openers) fn(m.ref);
+      else if (m && ACTIONS[m.type]) vscode.commands.executeCommand(ACTIONS[m.type]);
     });
     this.post();
   }

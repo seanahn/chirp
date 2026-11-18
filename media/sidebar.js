@@ -14,7 +14,39 @@
   const chats = el('div', 'list chats'); chats.setAttribute('role', 'listbox');
   const teamsHead = el('div', 'section', 'Teams and Channels');
   const teams = el('div', 'list teams'); teams.setAttribute('role', 'listbox');
-  d.body.append(filter, status, chatsHead, chats, teamsHead, teams);
+  const account = el('div', 'account'); account.hidden = true;
+  const signin = el('div', 'signin'); signin.hidden = true;
+  const channelsNote = el('div', 'channels-note'); channelsNote.hidden = true;
+  d.body.append(filter, account, status, signin, chatsHead, chats, teamsHead, channelsNote, teams);
+  const button = (label, type, cls) => { const b = el('button', cls || '', label); b.addEventListener('click', () => vscode.postMessage({ type })); return b; };
+  const METHOD = { editor: 'editor', deviceCode: 'sign-in code', tokenFile: 'token file' };
+
+  /** Signing in: the button, the wait, or the code. While signed out the lists are hidden. */
+  function renderSignIn() {
+    const si = state.signIn;
+    const out = !state.account && !!si;
+    for (const x of [chatsHead, chats, teamsHead, teams, channelsNote]) if (out) x.hidden = true;
+    if (!out) { chatsHead.hidden = false; chats.hidden = false; teamsHead.hidden = false; teams.hidden = false; }
+    signin.hidden = !si;
+    if (!si) { signin.replaceChildren(); return; }
+    if (si.stage === 'signedOut') signin.replaceChildren(button('Sign in to Microsoft', 'signIn', 'primary'));
+    else if (si.stage === 'waiting') signin.replaceChildren(el('div', 'wait', 'Waiting for sign-in in the browser…'), button('Cancel', 'cancelSignIn'));
+    else if (si.stage === 'code') signin.replaceChildren(el('div', 'code', si.userCode || ''), button('Copy code & open', 'copyCode', 'primary'), el('div', 'where', `Enter it at ${si.verificationUri || ''}`), button('Cancel', 'cancelSignIn'));
+  }
+  function renderAccount() {
+    const a = state.account;
+    account.hidden = !a;
+    account.textContent = a ? `Signed in as ${a.username} (${METHOD[a.method] || a.method})` : '';
+  }
+  /** The Teams section before channels are enabled, or when they can't be. */
+  function renderChannels() {
+    const c = state.channels;
+    if (!state.account || c === 'enabled' || !c) { channelsNote.hidden = true; channelsNote.replaceChildren(); return; }
+    channelsNote.hidden = false;
+    if (c === 'off') channelsNote.replaceChildren(button('Enable channels', 'enableChannels'));
+    else if (c === 'failed') channelsNote.replaceChildren(el('div', null, "Channels weren't enabled. If your company requires an admin to approve chirp, send them this link."), button('Copy admin link', 'copyAdminLink'), button('Try again', 'enableChannels'));
+    else if (c === 'forbidden') { channelsNote.replaceChildren(); channelsNote.textContent = "Channels need permissions this login doesn't have."; }
+  }
 
   const matches = (name) => !filter.value.trim() || String(name).toLowerCase().includes(filter.value.trim().toLowerCase());
 
@@ -49,6 +81,7 @@
     status.textContent = state.status ? state.status.text : '';
     chats.replaceChildren(...state.chats.filter((r) => matches(r.name)).map(chatRow));
     teams.replaceChildren(...renderTeams());
+    renderAccount(); renderSignIn(); renderChannels();
     const rows = allRows();
     if (selected >= rows.length) selected = rows.length - 1;
     mark();

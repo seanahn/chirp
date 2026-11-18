@@ -679,3 +679,12 @@ test('token file without channel permission shows the reason', async () => {
   assert.strictEqual(lastState(view).channels, 'forbidden');
   assert.deepStrictEqual(lastState(view).chats.map((r) => r.id), [PLAT]);
 });
+
+test('the sidebar\'s buttons run the sign-in commands', async () => {
+  ui.focused = true;
+  start(chatWorld(), { method: 'deviceCode' }); const view = ui.resolveSidebar(); await settle();
+  ui.executed.length = 0;
+  for (const type of ['signIn', 'cancelSignIn', 'copyCode', 'enableChannels', 'copyAdminLink']) view.webview._receive({ type });
+  await settle();
+  assert.deepStrictEqual(ui.executed.map((x) => x[0]), ['chirp.signIn', 'chirp.cancelSignIn', 'chirp.copyCode', 'chirp.enableChannels', 'chirp.copyAdminLink']);
+});
