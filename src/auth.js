@@ -43,4 +43,65 @@ function createTokenFileAuth({ file, fetch }) {
   };
 }
 
-module.exports = { CHIRP_CLIENT_ID, AUTHORITY, CHAT_SCOPES, CHANNEL_SCOPES, graphScope, claims, accountOf, createTokenFileAuth, SignInNeeded, Offline, SignInCancelled, SignInFailed };
+const FALLBACK_NOTE = "Your editor's Microsoft sign-in can't be used; using a sign-in code";
+
+/**
+ * Picks the way to sign in (design 201, "Choosing a way"), building each method only when it's needed.
+ * @param o.method   'auto' | 'editor' | 'deviceCode' | 'tokenFile'
+ * @param o.tokenFile  the configured path, or ''
+ * @param o.make*    build a method's Auth (makeEditor may return null: the editor has no Microsoft provider)
+ * @param o.onNote   tells the user when auto moves on to a sign-in code
+ * @returns an Auth that forwards to the method in use, plus current()
+ */
+function createAuth({ method = 'auto', tokenFile = '', makeEditor, makeDeviceCode, makeTokenFile, onNote = () => {} }) {
+  const makers = { editor: makeEditor, deviceCode: makeDeviceCode, tokenFile: makeTokenFile };
+  const built = {};
+  const get = (name) => { if (!(name in built)) built[name] = makers[name] ? makers[name]() : null; return built[name]; };
+  const order = () => {
+    if (tokenFile && (method === 'auto' || method === 'tokenFile')) return ['tokenFile'];
+    if (method === 'auto') return ['editor', 'deviceCode'];
+    return [method];
+  };
+  let active = null;
+
+  async function signIn(opts = {}) {
+    if (active) return active.signIn(opts);   // the channel step, or signing in again: the same method
+    const names = order();
+    for (let i = 0; i < names.length; i++) {
+      const m = get(names[i]);
+      if (!m) continue;
+      try { await m.signIn(opts); active = m; return; }
+      catch (e) {
+        const more = i < names.length - 1 && method === 'auto';
+        if (more && e instanceof SignInFailed && e.kind === 'unusable') { onNote(FALLBACK_NOTE); continue; }
+        throw e;   // cancelling never moves on to another method
+      }
+    }
+    throw new SignInNeeded();
+  }
+
+  /** Before any sign-in in this window: a method that already holds a session (a restart) is used. */
+  async function restore() {
+    for (const name of order()) {
+      const m = get(name);
+      if (!m) continue;
+      try { const t = await m.accessToken(); active = m; return t; }
+      catch (e) { if (!(e instanceof SignInNeeded)) { active = m; throw e; } }
+    }
+    throw new SignInNeeded();
+  }
+
+  return {
+    get method() { return active ? active.method : null; },
+    current: () => active,
+    signIn,
+    accessToken: () => (active ? active.accessToken() : restore()),
+    refresh: () => (active ? active.refresh() : restore()),
+    tenantId: () => (active ? active.tenantId() : null),
+    account: () => (active ? active.account() : null),
+    hasChannels: () => (active ? active.hasChannels() : false),
+    async signOut() { if (active) await active.signOut(); active = null; },
+  };
+}
+
+module.exports = { CHIRP_CLIENT_ID, createAuth, FALLBACK_NOTE, AUTHORITY, CHAT_SCOPES, CHANNEL_SCOPES, graphScope, claims, accountOf, createTokenFileAuth, SignInNeeded, Offline, SignInCancelled, SignInFailed };

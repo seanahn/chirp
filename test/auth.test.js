@@ -64,3 +64,91 @@ test('token-file signOut leaves the file alone', async () => {
   await a.signOut();
   assert.strictEqual(fs.readFileSync(file, 'utf8'), before);
 });
+
+// ---- choosing the method (Task 4)
+function fakeMethod(method, o = {}) {
+  const m = { method, calls: [], signedIn: !!o.session,
+    async signIn(opts) { m.calls.push(['signIn', opts]); if (o.signIn) return o.signIn(opts); m.signedIn = true; },
+    async accessToken() { m.calls.push(['accessToken']); if (!m.signedIn) throw new A.SignInNeeded(); return method + '-token'; },
+    async refresh() { return method + '-token'; }, tenantId: () => 't', account: () => ({ id: method }), hasChannels: () => false,
+    async signOut() { m.calls.push(['signOut']); m.signedIn = false; } };
+  return m;
+}
+function chooser(o) {
+  const made = {}; const notes = [];
+  const mk = (name) => () => { made[name] = made[name] || (o[name] === null ? null : fakeMethod(name, o[name] || {})); return made[name]; };
+  const auth = A.createAuth({ method: o.method || 'auto', tokenFile: o.tokenFile || '', makeEditor: mk('editor'), makeDeviceCode: mk('deviceCode'), makeTokenFile: mk('tokenFile'), onNote: (t) => notes.push(t) });
+  return { auth, made, notes };
+}
+
+test('auto prefers a configured token file', async () => {
+  const { auth, made } = chooser({ tokenFile: '/x/t.json' });
+  await auth.signIn({});
+  assert.strictEqual(auth.current().method, 'tokenFile');
+  assert.strictEqual(made.editor, undefined, 'the editor is never asked');
+});
+
+test('auto falls back to device code when the editor is unusable, with the note', async () => {
+  const { auth, notes } = chooser({ editor: { signIn: async () => { throw new A.SignInFailed('unusable', 'nope'); } } });
+  await auth.signIn({});
+  assert.strictEqual(auth.current().method, 'deviceCode');
+  assert.deepStrictEqual(notes, ["Your editor's Microsoft sign-in can't be used; using a sign-in code"]);
+  assert.strictEqual(await auth.accessToken(), 'deviceCode-token');
+  assert.deepStrictEqual(auth.account(), { id: 'deviceCode' });
+});
+
+test('auto with no editor provider uses device code without a note', async () => {
+  const { auth, notes } = chooser({ editor: null });
+  await auth.signIn({});
+  assert.strictEqual(auth.current().method, 'deviceCode');
+  assert.deepStrictEqual(notes, []);
+});
+
+test('cancel does not fall back', async () => {
+  const { auth, made } = chooser({ editor: { signIn: async () => { throw new A.SignInCancelled(); } } });
+  await assert.rejects(auth.signIn({}), A.SignInCancelled);
+  assert.strictEqual(made.deviceCode, undefined);
+  assert.strictEqual(auth.current(), null);
+});
+
+test('explicit deviceCode never touches the editor', async () => {
+  const { auth, made } = chooser({ method: 'deviceCode' });
+  await auth.signIn({});
+  assert.strictEqual(auth.current().method, 'deviceCode');
+  assert.strictEqual(made.editor, undefined);
+});
+
+test('explicit editor does not fall back', async () => {
+  const { auth, made } = chooser({ method: 'editor', editor: { signIn: async () => { throw new A.SignInFailed('unusable', 'x'); } } });
+  await assert.rejects(auth.signIn({}), (e) => e.kind === 'unusable');
+  assert.strictEqual(made.deviceCode, undefined);
+});
+
+test('a restart finds the existing device-code session', async () => {
+  const { auth } = chooser({ deviceCode: { session: true } });
+  assert.strictEqual(auth.current(), null);
+  assert.strictEqual(await auth.accessToken(), 'deviceCode-token', 'the editor has none; device code does');
+  assert.strictEqual(auth.current().method, 'deviceCode');
+});
+
+test('no session anywhere is sign-in needed', async () => {
+  const { auth } = chooser({});
+  await assert.rejects(auth.accessToken(), A.SignInNeeded);
+  assert.strictEqual(auth.account(), null);
+  assert.strictEqual(auth.hasChannels(), false);
+});
+
+test('the channel step uses the method that signed in', async () => {
+  const { auth, made } = chooser({ editor: { signIn: async () => { throw new A.SignInFailed('unusable', 'x'); } } });
+  await auth.signIn({});
+  await auth.signIn({ channels: true });
+  assert.deepStrictEqual(made.deviceCode.calls.filter((c) => c[0] === 'signIn').map((c) => c[1].channels), [undefined, true]);
+});
+
+test('sign out forgets the method', async () => {
+  const { auth, made } = chooser({ method: 'deviceCode' });
+  await auth.signIn({});
+  await auth.signOut();
+  assert.ok(made.deviceCode.calls.some((c) => c[0] === 'signOut'));
+  assert.strictEqual(auth.current(), null);
+});
