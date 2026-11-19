@@ -55,7 +55,7 @@ so chats never wait on channels:
 
 | Step | Permissions | What they're for | Who can approve |
 | --- | --- | --- | --- |
-| Signing in | `User.Read`, `Chat.ReadWrite`, `ChatMessage.Send`, `offline_access` | your profile; reading your chats, sending, marking read; staying signed in | usually you, if your company lets users approve apps |
+| Signing in | `User.Read`, `Chat.ReadWrite`, `ChatMessage.Send`, `Chat.Create`, `User.ReadBasic.All`, `offline_access` | your profile; reading your chats, sending, marking read; starting a 1:1 with someone found by name; staying signed in | usually you, if your company lets users approve apps |
 | **Enable channels** (a button in the sidebar) | `Team.ReadBasic.All`, `Channel.ReadBasic.All`, `ChannelMessage.Read.All`, `ChannelMessage.Send` | your teams and channels, reading and posting in them, channel mentions | `ChannelMessage.Read.All` needs an admin |
 
 - If your company requires an admin to approve chirp, send them this link:

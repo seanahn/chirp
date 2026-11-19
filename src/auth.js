@@ -6,7 +6,7 @@ const { createTokenStore, SignInNeeded, Offline } = require('./tokenStore');
 /** chirp's app registration in Microsoft Entra: multitenant, a public client. Not a secret. */
 const CHIRP_CLIENT_ID = '5d0faf94-77bc-41c5-8c4f-73bacc2040ff';
 const AUTHORITY = 'https://login.microsoftonline.com/organizations/oauth2/v2.0';
-const CHAT_SCOPES = ['User.Read', 'Chat.ReadWrite', 'ChatMessage.Send', 'offline_access'];
+const CHAT_SCOPES = ['User.Read', 'Chat.ReadWrite', 'ChatMessage.Send', 'Chat.Create', 'User.ReadBasic.All', 'offline_access'];
 const CHANNEL_SCOPES = ['Team.ReadBasic.All', 'Channel.ReadBasic.All', 'ChannelMessage.Read.All', 'ChannelMessage.Send'];
 
 class SignInCancelled extends Error { constructor() { super('Sign-in was cancelled'); this.name = 'SignInCancelled'; } }

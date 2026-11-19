@@ -7,7 +7,7 @@ const A = require('../src/auth');
 const jwt = (payload) => ['{"alg":"none"}', JSON.stringify(payload), 'sig'].map((x, i) => (i < 2 ? Buffer.from(x).toString('base64url') : x)).join('.');
 
 test('scopes are exactly the design\'s', () => {
-  assert.deepStrictEqual(A.CHAT_SCOPES, ['User.Read', 'Chat.ReadWrite', 'ChatMessage.Send', 'offline_access']);
+  assert.deepStrictEqual(A.CHAT_SCOPES, ['User.Read', 'Chat.ReadWrite', 'ChatMessage.Send', 'Chat.Create', 'User.ReadBasic.All', 'offline_access']);
   assert.deepStrictEqual(A.CHANNEL_SCOPES, ['Team.ReadBasic.All', 'Channel.ReadBasic.All', 'ChannelMessage.Read.All', 'ChannelMessage.Send']);
   assert.strictEqual(A.AUTHORITY, 'https://login.microsoftonline.com/organizations/oauth2/v2.0');
   assert.match(A.CHIRP_CLIENT_ID, /^[0-9a-f-]{36}$/);

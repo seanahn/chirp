@@ -29,7 +29,9 @@ class Sidebar {
     view.webview.onDidReceiveMessage((m) => {
       if (m && m.type === 'ready') this.post();
       else if (m && m.type === 'open' && m.ref) for (const fn of this.openers) fn(m.ref);
-      else if (m && ACTIONS[m.type]) vscode.commands.executeCommand(ACTIONS[m.type]);
+      else if (m && m.type === 'findPeople') vscode.commands.executeCommand('chirp.findPeople', String(m.query || ''));
+      else if (m && m.type === 'startChat') vscode.commands.executeCommand('chirp.startChat', String(m.userId || ''), String(m.name || ''));
+      else if (m && Object.prototype.hasOwnProperty.call(ACTIONS, m.type)) vscode.commands.executeCommand(ACTIONS[m.type]);
     });
     this.post();
   }

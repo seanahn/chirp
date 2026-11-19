@@ -36,7 +36,8 @@ reports chirp's open tab (see "How the agent knows the open conversation").
 ### Non-goals (first version)
 
 - Calls, meetings, presence, the calendar, files tabs, and app tabs.
-- Creating chats, adding people, or editing and deleting messages.
+- Group chats started from chirp, adding people, or editing and deleting messages.
+  (A 1:1 can be started; see "Starting a 1:1".)
 - Push delivery. chirp polls; a few seconds' delay is accepted.
 - Unread state for channels beyond mentions (see "Channels").
 - Any AI inside chirp. Summaries and drafted replies come from the agent.
@@ -101,6 +102,24 @@ Because the built-in VS Code tree cannot bold or animate a row, the
 sidebar is a webview view. It follows the VS Code theme (the theme's CSS
 variables) and works from the keyboard: arrow keys move between rows,
 Enter opens, and the filter box can be focused with a key.
+
+### Starting a 1:1
+
+Added 2026-11-19 at Sean's request. When the filter matches no chat in the
+list (at least 2 characters typed), the sidebar searches the directory
+for people whose name or mail starts with the text: `GET /users` with
+`startswith`, 8 results, once typing pauses for 300 ms. It shows them
+under **Start a chat with:**.
+
+Picking someone calls `POST /chats` with a `oneOnOne` chat of the two of
+you. Graph hands back the existing 1:1 if there is one, history and all;
+otherwise it creates an empty one. The chat opens as a tab. It joins the
+sidebar list once it has a message among the 50 most recent.
+
+- **Permissions:** `User.ReadBasic.All` and `Chat.Create`, both in chirp's
+  chat step (201). A login without them gets "chirp can't search people
+  with this login." or "chirp can't start chats with this login."
+- **Live check, read-only:** a colleague's first name found one person in about 0.16 s.
 
 ### A chat tab
 

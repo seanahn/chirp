@@ -354,6 +354,8 @@ function activate(context, deps = {}) {
     vscode.commands.registerCommand('chirp.signOut', () => signOut()),
     vscode.commands.registerCommand('chirp.enableChannels', () => enableChannels()),
     vscode.commands.registerCommand('chirp.cancelSignIn', () => { if (cancelSignIn) cancelSignIn(); }),
+    vscode.commands.registerCommand('chirp.findPeople', (query) => findPeople(query)),
+    vscode.commands.registerCommand('chirp.startChat', (userId, name) => startChat(userId, name)),
     vscode.commands.registerCommand('chirp.copyAdminLink', () => vscode.env.clipboard.writeText(adminLink(clientId))),
     vscode.commands.registerCommand('chirp.copyCode', async () => {
       if (!s.signIn || s.signIn.stage !== 'code') return;
@@ -362,6 +364,33 @@ function activate(context, deps = {}) {
     }),
     out,
   );
+
+  /** People whose name or mail starts with what was typed, for a chat the filter didn't find. */
+  async function findPeople(query) {
+    const q = String(query || '').trim();
+    if (q.length < 2 || s.signedOut) return;
+    try {
+      const me = await ensureMe();
+      const found = await api.findPeople(g, q);
+      sidebar.update({ people: { query: q, results: found.filter((x) => x.id !== me.id).map((x) => ({ id: x.id, name: x.displayName || x.mail || x.id, mail: x.mail || '' })) } });
+    } catch (e) {
+      if (e && e.status === 403) return sidebar.update({ people: { query: q, results: [], error: "chirp can't search people with this login." } });
+      onPollError(e);
+    }
+  }
+  /** Opens a 1:1 with someone: Graph hands back the existing chat if there is one, else makes a new, empty one. */
+  async function startChat(userId, name) {
+    if (!userId || s.signedOut) return;
+    try {
+      const me = await ensureMe();
+      const chat = await api.startChat(g, me.id, userId);
+      sidebar.update({ people: null });
+      conversations.open({ kind: 'chat', id: chat.id, name: name || undefined });
+    } catch (e) {
+      if (e && e.status === 403) return setStatus({ kind: 'error', text: "chirp can't start chats with this login." });
+      onPollError(e);
+    }
+  }
 
   async function refresh() {
     if (s.signedOut) { if (userOut()) return; try { await auth.accessToken(); await authenticated(); } catch (_) { return; } return; }

@@ -43,6 +43,8 @@ function graph(world) {
     m = /^\/chats\/([^/]+)\/messages$/.exec(p);
     if (m && init.method === 'POST') { const body = JSON.parse(init.body).body.content; const sent = msg('s' + calls.length, 'me', new Date().toISOString(), body); (world.messages[m[1]] = world.messages[m[1]] || []).unshift(sent); return ok(sent); }
     if (p === '/me/joinedTeams') return ok({ value: world.teams || [] });
+    if (p.startsWith('/users?')) return ok({ value: world.people || [] });
+    if (p === '/chats' && init.method === 'POST') { world.started = JSON.parse(init.body); return ok({ id: world.newChatId || '19:new@unq.gbl.spaces' }); }
     if (p === '/search/query') return ok({ value: [{ hitsContainers: [{ hits: world.search || [] }] }] });
     m = /^\/teams\/([^/]+)\/channels\/([^/]+)\/messages\/([^/?]+)$/.exec(p);
     if (m) return ok(((world.posts || {})[m[2]] || []).find((x) => x.id === m[3]) || {});
@@ -854,4 +856,40 @@ test('the first load says it is loading; a cached start does not', async () => {
   h.api.dispose();
   const h2 = start(chatWorld(), { memento: mem }); const view2 = ui.resolveSidebar();
   assert.strictEqual(lastState(view2).chatsLoaded, true, 'the cache shows at once, no loading text');
+});
+
+
+test('finding people and starting a chat opens its tab', async () => {
+  ui.focused = true; ui.panels.length = 0;
+  const w = chatWorld();
+  w.people = [{ id: 'u1', displayName: 'Nora Lane', mail: 'nora@example.com' }, { id: 'me', displayName: 'Sean Ahn', mail: 'me@example.com' }];
+  w.newChatId = '19:me_u1@unq.gbl.spaces';
+  const h = start(w); const view = ui.resolveSidebar(); await settle();
+  await ui.commands['chirp.findPeople']('Nor'); await settle();
+  assert.deepStrictEqual(lastState(view).people, { query: 'Nor', results: [{ id: 'u1', name: 'Nora Lane', mail: 'nora@example.com' }] }, 'Sean himself is left out');
+  await ui.commands['chirp.startChat']('u1', 'Nora Lane'); await settle();
+  assert.deepStrictEqual(w.started.members.map((m) => m['user@odata.bind']), ["https://graph.microsoft.com/v1.0/users('me')", "https://graph.microsoft.com/v1.0/users('u1')"]);
+  const panel = ui.panels.at(-1);
+  assert.strictEqual(panel.title, 'Nora Lane');
+  panel.webview._receive({ type: 'ready' }); await settle();
+  assert.strictEqual(panel.webview.posted.find((x) => x.type === 'init').ref.id, '19:me_u1@unq.gbl.spaces');
+});
+
+test('a login that can\'t search people says so', async () => {
+  ui.focused = true;
+  const w = chatWorld();
+  w.fail = (p) => (p.startsWith('/users?') ? new Response(JSON.stringify({ error: { code: 'Authorization_RequestDenied' } }), { status: 403 }) : undefined);
+  start(w); const view = ui.resolveSidebar(); await settle();
+  await ui.commands['chirp.findPeople']('Nor'); await settle();
+  assert.deepStrictEqual(lastState(view).people, { query: 'Nor', results: [], error: "chirp can't search people with this login." });
+});
+
+test('the sidebar forwards searches and picks', async () => {
+  ui.focused = true;
+  start(chatWorld()); const view = ui.resolveSidebar(); await settle();
+  ui.executed.length = 0;
+  view.webview._receive({ type: 'findPeople', query: 'Nor' });
+  view.webview._receive({ type: 'startChat', userId: 'u1', name: 'Nora Lane' });
+  await settle();
+  assert.deepStrictEqual(ui.executed.map((x) => x.slice(0, 3)), [['chirp.findPeople', 'Nor'], ['chirp.startChat', 'u1', 'Nora Lane']]);
 });

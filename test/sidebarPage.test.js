@@ -235,3 +235,34 @@ test('no "Loading teams" before channels are enabled', () => {
   p.send(state({ chats: [], teams: [], chatsLoaded: false, teamsLoaded: false, signIn: null, account: { username: 'a@b.com', method: 'editor' }, channels: 'off' }));
   assert.strictEqual(p.d.querySelector('.teams .empty'), null);
 });
+
+// ---- start a chat with someone not in the list
+const typeFilter = (p, text) => { const f = p.d.querySelector('input.filter'); f.value = text; f.dispatchEvent(new p.w.Event('input')); return f; };
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+test('no chat matches: after a pause, people are searched', async () => {
+  const p = page();
+  p.send(state({ chats: [row({ id: 'a', name: 'Alpha' })], chatsLoaded: true }));
+  typeFilter(p, 'N'); await wait(350);
+  assert.strictEqual(p.posted.filter((x) => x.type === 'findPeople').length, 0, 'one letter is too few');
+  typeFilter(p, 'Na'); typeFilter(p, 'Nor'); await wait(350);
+  assert.deepStrictEqual(p.posted.filter((x) => x.type === 'findPeople'), [{ type: 'findPeople', query: 'Nor' }], 'once, after typing stops');
+  typeFilter(p, 'Al'); await wait(350);
+  assert.strictEqual(p.posted.filter((x) => x.type === 'findPeople').length, 1, 'a matching chat: no search');
+});
+
+test('people show under the chats, and picking one starts the chat', () => {
+  const p = page();
+  typeFilter(p, 'Nor');
+  p.send(state({ chats: [], chatsLoaded: true, people: { query: 'Nor', results: [{ id: 'u1', name: 'Nora Lane', mail: 'nora@example.com' }] } }));
+  const person = p.d.querySelector('.chats .row.person');
+  assert.ok(p.d.querySelector('.chats').textContent.includes('Start a chat with'));
+  assert.strictEqual(person.querySelector('.name').textContent, 'Nora Lane');
+  assert.strictEqual(person.querySelector('.preview').textContent, 'nora@example.com');
+  person.dispatchEvent(new p.w.MouseEvent('click', { bubbles: true }));
+  assert.deepStrictEqual(p.posted.at(-1), { type: 'startChat', userId: 'u1', name: 'Nora Lane' });
+  p.send(state({ chats: [], chatsLoaded: true, people: { query: 'Zed', results: [{ id: 'u2', name: 'Zed Z', mail: '' }] } }));
+  assert.strictEqual(p.d.querySelector('.chats .row.person'), null, 'results for another search are not shown');
+  p.send(state({ chats: [], chatsLoaded: true, people: { query: 'Nor', results: [], error: "chirp can't search people with this login." } }));
+  assert.ok(p.d.querySelector('.chats').textContent.includes("chirp can't search people with this login."));
+});

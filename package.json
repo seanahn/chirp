@@ -2,7 +2,7 @@
   "name": "chirp",
   "displayName": "chirp",
   "description": "Microsoft Teams chats and channels in a sidebar of their own, each conversation an editor tab, with its text available to the AI agent beside it. Not affiliated with Microsoft.",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "publisher": "seanahn",
   "license": "MIT",
   "repository": {

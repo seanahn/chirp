@@ -171,7 +171,7 @@ never wait on an admin.
 
 | Step | Permissions | Who can approve |
 | --- | --- | --- |
-| Chats | `User.Read`, `Chat.ReadWrite`, `ChatMessage.Send`, `offline_access` | usually the user, if their company allows user consent |
+| Chats | `User.Read`, `Chat.ReadWrite`, `ChatMessage.Send`, `Chat.Create`, `User.ReadBasic.All`, `offline_access` | usually the user, if their company allows user consent |
 | Channels | `Team.ReadBasic.All`, `Channel.ReadBasic.All`, `ChannelMessage.Read.All`, `ChannelMessage.Send` | `ChannelMessage.Read.All` needs an admin |
 
 - **Sign-in asks only for the chat permissions.** Chats, chat tabs,

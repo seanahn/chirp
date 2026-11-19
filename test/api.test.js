@@ -84,3 +84,18 @@ test('sendChatMessage carries mentions when given', async () => {
   await api.sendChatMessage(g, CHAT, 'x');
   assert.deepStrictEqual(g.calls[1].body, { body: { contentType: 'html', content: 'x' } }, 'no mentions key without mentions');
 });
+
+// ---- starting a 1:1
+test('findPeople searches the directory by name or mail, quotes escaped', async () => {
+  const g = fakeG(() => ({ value: [{ id: 'u1', displayName: 'Nora Lane', mail: 'nora@x.com' }] }));
+  assert.deepStrictEqual(await api.findPeople(g, "O'Na"), [{ id: 'u1', displayName: 'Nora Lane', mail: 'nora@x.com' }]);
+  const q = "O''Na";
+  assert.strictEqual(g.calls[0].path, `/users?$filter=${encodeURIComponent(`startswith(displayName,'${q}') or startswith(givenName,'${q}') or startswith(surname,'${q}') or startswith(mail,'${q}')`)}&$select=id,displayName,mail&$top=8`);
+});
+
+test('startChat asks for a 1:1 with both people (Graph reuses an existing one)', async () => {
+  const g = fakeG(() => ({ id: '19:a_b@unq.gbl.spaces' }));
+  assert.deepStrictEqual(await api.startChat(g, 'me', 'u1'), { id: '19:a_b@unq.gbl.spaces' });
+  const m = (id) => ({ '@odata.type': '#microsoft.graph.aadUserConversationMember', roles: ['owner'], 'user@odata.bind': `https://graph.microsoft.com/v1.0/users('${id}')` });
+  assert.deepStrictEqual(g.calls[0], { method: 'POST', path: '/chats', body: { chatType: 'oneOnOne', members: [m('me'), m('u1')] } });
+});

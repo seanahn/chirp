@@ -51,4 +51,18 @@ async function searchMessages(g, queryString, size = 25) {
   return containers.flatMap((c) => c.hits || []);
 }
 
-module.exports = { me, listChats, chatMessages, markChatRead, sendChatMessage, joinedTeams, channels, channelMessages, postChannelMessage, replyToPost, channelMessage, postReplies, searchMessages };
+/** People in the directory whose name or mail starts with `text` (User.ReadBasic.All). */
+async function findPeople(g, text, top = 8) {
+  const q = String(text).replace(/'/g, "''");
+  const filter = `startswith(displayName,'${q}') or startswith(givenName,'${q}') or startswith(surname,'${q}') or startswith(mail,'${q}')`;
+  const r = await g.get(`/users?$filter=${e(filter)}&$select=id,displayName,mail&$top=${top}`);
+  return (r && r.value) || [];
+}
+
+/** Opens a 1:1 with someone (Chat.Create). Graph hands back the existing 1:1 if there is one. */
+function startChat(g, meId, userId) {
+  const member = (id) => ({ '@odata.type': '#microsoft.graph.aadUserConversationMember', roles: ['owner'], 'user@odata.bind': `https://graph.microsoft.com/v1.0/users('${id}')` });
+  return g.post('/chats', { chatType: 'oneOnOne', members: [member(meId), member(userId)] });
+}
+
+module.exports = { findPeople, startChat, me, listChats, chatMessages, markChatRead, sendChatMessage, joinedTeams, channels, channelMessages, postChannelMessage, replyToPost, channelMessage, postReplies, searchMessages };

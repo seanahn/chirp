@@ -85,6 +85,21 @@
     // never just blank: loading on a first run (nothing cached yet), then a plain empty state
     const filtering = !!filter.value.trim();
     if (!chats.children.length) chats.append(el('div', 'empty', filtering ? 'No matches' : state.chatsLoaded === false ? 'Loading chats…' : 'No chats yet'));
+    // no chat matches the filter: people from the directory, to start (or reopen) a 1:1 with
+    const pe = state.people;
+    if (filtering && pe && pe.query === filter.value.trim() && !state.chats.some((r) => matches(r.name))) {
+      if (pe.error) chats.append(el('div', 'empty', pe.error));
+      else if (pe.results && pe.results.length) {
+        chats.append(el('div', 'people-head', 'Start a chat with:'));
+        for (const x of pe.results) {
+          const row = el('div', 'row person');
+          row.dataset.person = JSON.stringify({ userId: x.id, name: x.name });
+          row.append(el('div', 'line'), el('div', 'preview', x.mail || ''));
+          row.firstChild.append(el('span', 'name', x.name));
+          chats.append(row);
+        }
+      }
+    }
     if (!teams.children.length && state.channels === 'enabled') teams.append(el('div', 'empty', filtering ? 'No matches' : state.teamsLoaded === false ? 'Loading teams…' : 'No teams'));
     renderAccount(); renderSignIn(); renderChannels();
     const rows = allRows();
@@ -123,11 +138,19 @@
 
   function activate(row) {
     if (!row) return;
+    if (row.dataset.person) { const x = JSON.parse(row.dataset.person); vscode.postMessage({ type: 'startChat', userId: x.userId, name: x.name }); return; }
     if (row.dataset.team) { const id = row.dataset.team; saved.expanded[id] = !saved.expanded[id]; vscode.setState(saved); render(); return; }
     vscode.postMessage({ type: 'open', ref: JSON.parse(row.dataset.ref) });
   }
 
-  filter.addEventListener('input', () => { selected = -1; render(); });
+  // when no chat matches, ask the host for people, once typing pauses
+  let peopleTimer = null;
+  filter.addEventListener('input', () => {
+    selected = -1; render();
+    clearTimeout(peopleTimer);
+    const q = filter.value.trim();
+    if (q.length >= 2 && !state.chats.some((r) => matches(r.name))) peopleTimer = setTimeout(() => vscode.postMessage({ type: 'findPeople', query: q }), 300);
+  });
   d.addEventListener('click', (e) => {
     const row = e.target.closest && e.target.closest('.row');
     if (!row) return;
