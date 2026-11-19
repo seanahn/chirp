@@ -200,3 +200,8 @@ test('no Enable channels button while a sign-in is under way', () => {
   p.send(state({ signIn: { stage: 'waiting' }, account: { username: 'a@b.com', method: 'editor' }, channels: 'off' }));
   assert.strictEqual(btn(p, 'Enable channels'), undefined);
 });
+
+test('a row\'s name and its last message have different colors', () => {
+  assert.ok(/\.row \.name\s*\{[^}]*color:\s*var\(--vscode-foreground\)/.test(CSS), 'the name in the normal text color');
+  assert.ok(/\.row \.preview\s*\{[^}]*color:\s*var\(--vscode-descriptionForeground\)/.test(CSS), 'the last message dimmer');
+});
