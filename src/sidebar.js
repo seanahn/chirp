@@ -27,7 +27,7 @@ class Sidebar {
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp}; img-src ${csp} https: data:; script-src 'nonce-${nonce}';">
 <link rel="stylesheet" href="${css}"></head><body><script nonce="${nonce}" src="${js}"></script></body></html>`;
     view.webview.onDidReceiveMessage((m) => {
-      if (m && m.type === 'ready') this.post();
+      if (m && m.type === 'ready') { this.post(); if (this.frontRef) this.view.webview.postMessage({ type: 'front', ref: this.frontRef }); }
       else if (m && m.type === 'open' && m.ref) for (const fn of this.openers) fn(m.ref);
       else if (m && m.type === 'findPeople') vscode.commands.executeCommand('chirp.findPeople', String(m.query || ''));
       else if (m && m.type === 'startChat') vscode.commands.executeCommand('chirp.startChat', String(m.userId || ''), String(m.name || ''));
@@ -54,6 +54,12 @@ class Sidebar {
   }
 
   onOpen(fn) { this.openers.push(fn); }
+
+  /** The chirp tab in front: its row is highlighted. Kept, so a sidebar shown later gets it too. */
+  front(ref) {
+    this.frontRef = ref ? { kind: ref.kind, id: ref.id, teamId: ref.teamId } : null;
+    if (this.view && this.frontRef) this.view.webview.postMessage({ type: 'front', ref: this.frontRef });
+  }
 
   focusFilter() {
     if (this.view && this.view.show) this.view.show(false);

@@ -5,7 +5,11 @@
   const d = document;
   const saved = vscode.getState() || { expanded: {} };
   let state = { chats: [], teams: [], status: null, meName: '' };
-  let selected = -1;
+  // the highlighted row, by what it is (a chat, a channel, a team, a person), not by its position: the list reorders
+  let selectedKey = null;
+  const keyOf = (r) => r.dataset.ref || (r.dataset.team ? 'team:' + r.dataset.team : r.dataset.person ? 'person:' + r.dataset.person : '');
+  const refKey = (ref) => JSON.stringify(ref.kind === 'channel' ? { kind: 'channel', teamId: ref.teamId, id: ref.id } : { kind: 'chat', id: ref.id });
+  const selectedIndex = () => allRows().findIndex((r) => keyOf(r) === selectedKey);
 
   const el = (tag, cls, text) => { const e = d.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
   const filter = el('input', 'filter'); filter.type = 'text'; filter.placeholder = 'Filter chats and channels'; filter.setAttribute('aria-label', 'Filter chats and channels');
@@ -103,7 +107,6 @@
     if (!teams.children.length && state.channels === 'enabled') teams.append(el('div', 'empty', filtering ? 'No matches' : state.teamsLoaded === false ? 'Loading teams…' : 'No teams'));
     renderAccount(); renderSignIn(); renderChannels();
     const rows = allRows();
-    if (selected >= rows.length) selected = rows.length - 1;
     mark();
   }
 
@@ -134,7 +137,7 @@
   }
 
   const allRows = () => [...d.querySelectorAll('.list .row')];
-  function mark() { allRows().forEach((r, i) => r.classList.toggle('selected', i === selected)); }
+  function mark() { allRows().forEach((r) => r.classList.toggle('selected', keyOf(r) === selectedKey)); }
 
   function activate(row) {
     if (!row) return;
@@ -146,7 +149,7 @@
   // when no chat matches, ask the host for people, once typing pauses
   let peopleTimer = null;
   filter.addEventListener('input', () => {
-    selected = -1; render();
+    selectedKey = null; render();
     clearTimeout(peopleTimer);
     const q = filter.value.trim();
     if (q.length >= 2 && !state.chats.some((r) => matches(r.name))) peopleTimer = setTimeout(() => vscode.postMessage({ type: 'findPeople', query: q }), 300);
@@ -154,22 +157,25 @@
   d.addEventListener('click', (e) => {
     const row = e.target.closest && e.target.closest('.row');
     if (!row) return;
-    selected = allRows().indexOf(row); mark(); activate(row);
+    selectedKey = keyOf(row); mark(); activate(row);
   });
   d.addEventListener('keydown', (e) => {
     const rows = allRows();
     if (e.key === 'Escape' && e.target === filter) { filter.value = ''; render(); return; }
     if (e.key === '/' && e.target !== filter) { e.preventDefault(); filter.focus(); return; }
-    if (e.key === 'ArrowDown') { e.preventDefault(); selected = Math.min(rows.length - 1, selected + 1); mark(); scroll(); return; }
-    if (e.key === 'ArrowUp') { e.preventDefault(); selected = Math.max(0, selected - 1); mark(); scroll(); return; }
-    if (e.key === 'Enter' && selected >= 0) { e.preventDefault(); activate(rows[selected]); }
+    const at = selectedIndex();
+    const go = (i) => { if (rows[i]) { selectedKey = keyOf(rows[i]); mark(); scroll(); } };
+    if (e.key === 'ArrowDown') { e.preventDefault(); go(Math.min(rows.length - 1, at + 1)); return; }
+    if (e.key === 'ArrowUp') { e.preventDefault(); go(Math.max(0, at - 1)); return; }
+    if (e.key === 'Enter' && at >= 0) { e.preventDefault(); activate(rows[at]); }
   });
-  function scroll() { const r = allRows()[selected]; if (r && r.scrollIntoView) r.scrollIntoView({ block: 'nearest' }); }
+  function scroll() { const r = allRows()[selectedIndex()]; if (r && r.scrollIntoView) r.scrollIntoView({ block: 'nearest' }); }
 
   window.addEventListener('message', (e) => {
     const m = e.data || {};
     if (m.type === 'state') { state = m; render(); }
     else if (m.type === 'focusFilter') filter.focus();
+    else if (m.type === 'front' && m.ref) { selectedKey = refKey(m.ref); mark(); scroll(); }   // the chirp tab in front; a file in front changes nothing
   });
   vscode.postMessage({ type: 'ready' });
 })();

@@ -92,6 +92,10 @@ Row states:
   does not pulse; the `@` and an accent background mark it instead
   *(builder's call)*.
 
+The highlighted row is the chat or channel itself, not a position: it
+stays on its chat when the list reorders. It also follows the editor:
+whichever chirp tab comes to the front, its row is highlighted.
+
 On a first run, before anything is cached, each section says **Loading
 chats…** or **Loading teams…** until its first list arrives. After that,
 an empty section says so ("No chats yet", "No teams", or "No matches" while

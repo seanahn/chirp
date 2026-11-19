@@ -170,7 +170,7 @@ class Conversations {
     tab.panel.webview.postMessage({ type: 'messages', reset: true, more: !!next, messages: tab.messages.map((x) => viewMessage(x, me.id)) });
     if (!this.tabs.has(tab.key)) return;   // closed meanwhile (signing out): nothing is written
     const file = this.mirror.write(conv, tab.messages);
-    if (this.front === tab || tab.panel.active) { this.front = tab; this.mirror.setCurrent(file); }
+    if (this.front === tab || tab.panel.active) { this.front = tab; this.mirror.setCurrent(file); if (this.onFront) this.onFront(tab.ref); }
     this.onOpened(tab.key);
     if (tab.ref.kind === 'chat') { const chat = this.getChat(tab.ref.id); tab.pendingRead = !chat || model.isUnread(chat, me.id); }
     tab.loaded = true;
@@ -288,6 +288,7 @@ class Conversations {
 
   toFront(tab) {
     this.front = tab;
+    if (this.onFront) this.onFront(tab.ref);
     const file = this.mirror.pathFor(tab.ref.id);
     if (file) this.mirror.setCurrent(file);
   }

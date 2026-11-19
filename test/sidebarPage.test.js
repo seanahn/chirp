@@ -266,3 +266,30 @@ test('people show under the chats, and picking one starts the chat', () => {
   p.send(state({ chats: [], chatsLoaded: true, people: { query: 'Nor', results: [], error: "chirp can't search people with this login." } }));
   assert.ok(p.d.querySelector('.chats').textContent.includes("chirp can't search people with this login."));
 });
+
+// ---- the highlight follows the chat, not the row number
+const selectedId = (p) => { const r = p.d.querySelector('.chats .row.selected'); return r ? JSON.parse(r.dataset.ref).id : null; };
+
+test('the highlighted chat stays highlighted when another chat moves to the top', () => {
+  const p = page();
+  p.send(state({ chats: [row({ id: 'a' }), row({ id: 'b' }), row({ id: 'c' })] }));
+  p.d.querySelectorAll('.chats .row')[1].dispatchEvent(new p.w.MouseEvent('click', { bubbles: true }));
+  assert.strictEqual(selectedId(p), 'b');
+  p.send(state({ chats: [row({ id: 'c' }), row({ id: 'a' }), row({ id: 'b' })] }));
+  assert.strictEqual(selectedId(p), 'b', 'still b, now third');
+  p.key('ArrowDown');
+  assert.strictEqual(selectedId(p), 'b', 'b is last: nowhere further down');
+  p.key('ArrowUp');
+  assert.strictEqual(selectedId(p), 'a', 'arrows move from where b is now');
+});
+
+test('the chat in front in the editor is highlighted', () => {
+  const p = page();
+  p.send(state({ chats: [row({ id: 'a' }), row({ id: 'b' }), row({ id: 'c' })] }));
+  p.send({ type: 'front', ref: { kind: 'chat', id: 'c' } });
+  assert.strictEqual(selectedId(p), 'c');
+  p.send(state({ chats: [row({ id: 'c' }), row({ id: 'a' }), row({ id: 'b' })] }));
+  assert.strictEqual(selectedId(p), 'c');
+  p.send({ type: 'front', ref: null });
+  assert.strictEqual(selectedId(p), 'c', 'a file in front leaves the last chat highlighted');
+});

@@ -893,3 +893,20 @@ test('the sidebar forwards searches and picks', async () => {
   await settle();
   assert.deepStrictEqual(ui.executed.map((x) => x.slice(0, 3)), [['chirp.findPeople', 'Nor'], ['chirp.startChat', 'u1', 'Nora Lane']]);
 });
+
+test('bringing a chat tab to the front tells the sidebar', async () => {
+  ui.focused = true; ui.panels.length = 0;
+  const h = start(chatWorld()); const view = ui.resolveSidebar(); await settle();
+  const panel = await openTab(h, PLAT);
+  panel._setView(false, false); panel._setView(true, true); await settle();
+  const fronts = view.webview.posted.filter((x) => x.type === 'front');
+  assert.ok(fronts.length, 'told');
+  assert.deepStrictEqual({ kind: fronts.at(-1).ref.kind, id: fronts.at(-1).ref.id }, { kind: 'chat', id: PLAT });
+});
+
+test('a tab loading in front, after a reload, is highlighted too', async () => {
+  ui.focused = true; ui.panels.length = 0;
+  const h = start(chatWorld()); const view = ui.resolveSidebar(); await settle();
+  await openTab(h, PLAT);
+  assert.ok(view.webview.posted.some((x) => x.type === 'front' && x.ref.id === PLAT));
+});

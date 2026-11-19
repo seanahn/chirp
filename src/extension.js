@@ -308,6 +308,7 @@ function activate(context, deps = {}) {
     me: ensureMe, meId: () => (s.me ? s.me.id : null), tenantId: () => auth.tenantId(),
     getChat: (id) => s.chats.find((c) => c.id === id), getChannel,
     addPoller: (run, everyMs) => addPoller(run, everyMs),
+    onFront: (ref) => sidebar.front(ref),
     onOpened: (key) => { mentions.clear(key); sidebar.update({ chats: chatRows(), teams: teamRows() }); },
     onRead: (chatId) => {
       const c = s.chats.find((x) => x.id === chatId);
