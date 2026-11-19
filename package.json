@@ -25,7 +25,7 @@
       "activitybar": [
         {
           "id": "chirp",
-          "title": "chirp",
+          "title": "Teams",
           "icon": "media/teams-icon.svg"
         }
       ]
@@ -35,7 +35,7 @@
         {
           "type": "webview",
           "id": "chirp.sidebar",
-          "name": "Teams"
+          "name": "Chats and Channels"
         }
       ]
     },

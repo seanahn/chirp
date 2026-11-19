@@ -41,3 +41,8 @@ test('no company or tool names ship', () => {
   }
   assert.deepStrictEqual(found, []);
 });
+
+test('the Activity Bar says Teams', () => {
+  assert.strictEqual(pkg.contributes.viewsContainers.activitybar[0].title, 'Teams', 'the hover text on the icon');
+  assert.strictEqual(pkg.contributes.views.chirp[0].name, 'Chats and Channels', 'so the heading reads "Teams: Chats and Channels"');
+});
