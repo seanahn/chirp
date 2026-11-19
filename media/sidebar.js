@@ -82,6 +82,10 @@
     status.textContent = state.status ? state.status.text : '';
     chats.replaceChildren(...state.chats.filter((r) => matches(r.name)).map(chatRow));
     teams.replaceChildren(...renderTeams());
+    // never just blank: loading on a first run (nothing cached yet), then a plain empty state
+    const filtering = !!filter.value.trim();
+    if (!chats.children.length) chats.append(el('div', 'empty', filtering ? 'No matches' : state.chatsLoaded === false ? 'Loading chats…' : 'No chats yet'));
+    if (!teams.children.length && state.channels === 'enabled') teams.append(el('div', 'empty', filtering ? 'No matches' : state.teamsLoaded === false ? 'Loading teams…' : 'No teams'));
     renderAccount(); renderSignIn(); renderChannels();
     const rows = allRows();
     if (selected >= rows.length) selected = rows.length - 1;

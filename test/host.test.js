@@ -840,3 +840,18 @@ test('turning agent files off deletes them', async () => {
   assert.strictEqual(fs.existsSync(file), false);
   assert.strictEqual(fs.existsSync(path.join(h.dir, '.chirp', 'current.teams')), false);
 });
+
+test('the first load says it is loading; a cached start does not', async () => {
+  ui.focused = true;
+  let release; const gate = new Promise((r) => { release = r; });
+  const w = chatWorld();
+  w.fail = (p) => (p.startsWith('/me/chats') ? gate.then(() => undefined) : undefined);
+  const mem = memento();
+  const h = start(w, { memento: mem }); const view = ui.resolveSidebar(); await settle();
+  assert.strictEqual(lastState(view).chatsLoaded, false, 'waiting for the first chat list');
+  delete w.fail; release(); await settle(60);
+  assert.strictEqual(lastState(view).chatsLoaded, true);
+  h.api.dispose();
+  const h2 = start(chatWorld(), { memento: mem }); const view2 = ui.resolveSidebar();
+  assert.strictEqual(lastState(view2).chatsLoaded, true, 'the cache shows at once, no loading text');
+});

@@ -123,7 +123,7 @@ function activate(context, deps = {}) {
     // the list shows at once; the mention checks follow, a few at a time, and update the rows when done
     s.chats = chats;
     if (s.status && s.status.kind !== 'note') s.status = null;
-    sidebar.update({ chats: chatRows(), status: s.status || s.throttle });
+    sidebar.update({ chats: chatRows(), status: s.status || s.throttle, chatsLoaded: true });
     saveLists();
     let next = 0;
     await Promise.all(Array.from({ length: Math.min(CHECK_PARALLEL, todo.length) }, async () => { while (next < todo.length && g0 === gen) await checkChat(todo[next++], me); }));
@@ -197,7 +197,7 @@ function activate(context, deps = {}) {
     s.me = null; meFetched = false; s.chats = []; s.teams = []; s.counts.clear(); s.lastPreview.clear();
     mirror.clearAll();
     conversations.closeAll();
-    sidebar.update({ chats: [], teams: [] });
+    sidebar.update({ chats: [], teams: [], chatsLoaded: false, teamsLoaded: false });
   }
 
   async function signIn() {
@@ -286,7 +286,7 @@ function activate(context, deps = {}) {
     out.sort((a, b) => a.name.localeCompare(b.name));
     if (g0 !== gen) return;
     s.teams = out;
-    sidebar.update({ teams: teamRows() });
+    sidebar.update({ teams: teamRows(), teamsLoaded: true });
     saveLists();
   }
   const teamsPoller = addPoller(pollTeams, TEAMS_MS);
@@ -375,7 +375,8 @@ function activate(context, deps = {}) {
     s.me = cached.me || null; s.chats = cached.chats || []; s.teams = cached.teams || [];
     sidebar.update({ chats: chatRows(), teams: teamRows() });
   }
-  sidebar.update({ signIn: null, account: null, channels: s.channels });
+  // a first run has nothing cached: the sidebar says it's loading until each list's first answer
+  sidebar.update({ signIn: null, account: null, channels: s.channels, chatsLoaded: !!cached, teamsLoaded: !!(cached && cached.teams && cached.teams.length) });
   startUp().catch(log);
   current = { mentionPoller, teamsPoller, teamRows, pollers, refresh, dispose, g, api, get auth() { return auth; }, mentions, sidebar, mirror, conversations, log, state: s, addPoller, chatPoller, isFocused, onPollError, chatRows };
   return current;

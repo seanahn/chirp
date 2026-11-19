@@ -213,3 +213,25 @@ test('hovering a chat shows its last message', () => {
   assert.strictEqual(r.getAttribute('title'), 'Xavier Ng: the whole\nmessage <b>here</b>');
   assert.strictEqual(r.querySelector('b'), null, 'as text');
 });
+
+// ---- first load (no cached lists yet)
+test('loading text until the first lists arrive, then plain empty states', () => {
+  const p = page();
+  const signedIn = { signIn: null, account: { username: 'a@b.com', method: 'tokenFile' }, channels: 'enabled' };
+  p.send(state(Object.assign({ chats: [], teams: [], chatsLoaded: false, teamsLoaded: false }, signedIn)));
+  assert.strictEqual(p.d.querySelector('.chats .empty').textContent, 'Loading chats…');
+  assert.strictEqual(p.d.querySelector('.teams .empty').textContent, 'Loading teams…');
+  p.send(state(Object.assign({ chats: [], teams: [], chatsLoaded: true, teamsLoaded: true }, signedIn)));
+  assert.strictEqual(p.d.querySelector('.chats .empty').textContent, 'No chats yet');
+  assert.strictEqual(p.d.querySelector('.teams .empty').textContent, 'No teams');
+  p.send(state(Object.assign({ chats: [row({ id: 'a', name: 'Alpha' })], teams: [], chatsLoaded: true, teamsLoaded: true }, signedIn)));
+  assert.strictEqual(p.d.querySelector('.chats .empty'), null, 'rows replace it');
+  const f = p.d.querySelector('input.filter'); f.value = 'zzz'; f.dispatchEvent(new p.w.Event('input'));
+  assert.strictEqual(p.d.querySelector('.chats .empty').textContent, 'No matches');
+});
+
+test('no "Loading teams" before channels are enabled', () => {
+  const p = page();
+  p.send(state({ chats: [], teams: [], chatsLoaded: false, teamsLoaded: false, signIn: null, account: { username: 'a@b.com', method: 'editor' }, channels: 'off' }));
+  assert.strictEqual(p.d.querySelector('.teams .empty'), null);
+});

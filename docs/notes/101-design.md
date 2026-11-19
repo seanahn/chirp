@@ -91,6 +91,12 @@ Row states:
   does not pulse; the `@` and an accent background mark it instead
   *(builder's call)*.
 
+On a first run, before anything is cached, each section says **Loading
+chats…** or **Loading teams…** until its first list arrives. After that,
+an empty section says so ("No chats yet", "No teams", or "No matches" while
+filtering) instead of staying blank. Later starts show the cached lists at
+once.
+
 Because the built-in VS Code tree cannot bold or animate a row, the
 sidebar is a webview view. It follows the VS Code theme (the theme's CSS
 variables) and works from the keyboard: arrow keys move between rows,
