@@ -31,9 +31,14 @@ check:
 test: deps
 	npm run -s test
 
-## Symlink this checkout into every VS Code / code-server extension dir
+## Symlink this checkout into every VS Code / code-server extension dir.
+## The previous version's link is kept until the next install: a window still running it loads its tab pages from that
+## folder, and removing it before the window reloads leaves new tabs blank.
 install: deps check
-	@for d in $(EXT_DIRS); do rm -f $$d/seanahn.chirp-*; [ -d $$d ] && ln -sfn $(CURDIR) $$d/$(EXT_ID) && echo "linked $$d/$(EXT_ID)"; done; true
+	@for d in $(EXT_DIRS); do [ -d $$d ] || continue; \
+		prev=$$(ls -dt $$d/seanahn.chirp-* 2>/dev/null | grep -v "/$(EXT_ID)$$" | head -1); \
+		for o in $$d/seanahn.chirp-*; do [ -e "$$o" ] || [ -L "$$o" ] || continue; [ "$$o" = "$$d/$(EXT_ID)" ] || [ "$$o" = "$$prev" ] || rm -f "$$o"; done; \
+		ln -sfn $(CURDIR) $$d/$(EXT_ID) && echo "linked $$d/$(EXT_ID)"; done; true
 	@echo "chirp installed. Reload the window to activate."
 
 ## Remove the symlinks
