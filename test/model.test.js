@@ -49,7 +49,7 @@ test('mentionsUser', () => {
 
 test('chatRow', () => {
   const chat = Object.assign({ id: 'c1', lastMessagePreview: msg('1', 'b', '2026-11-17T11:00:00Z', 'hey') }, group);
-  assert.deepStrictEqual(M.chatRow(chat, ME, { mention: true, unreadCount: 3 }), { kind: 'chat', id: 'c1', name: 'Ana, Ben, Dana, +2', preview: 'Ben: hey', unread: true, unreadCount: 3, mention: true, time: '2026-11-17T11:00:00Z' });
+  assert.deepStrictEqual(M.chatRow(chat, ME, { mention: true, unreadCount: 3 }), { kind: 'chat', id: 'c1', name: 'Ana, Ben, Dana, +2', preview: 'Ben: hey', tooltip: 'Ben Carter: hey', unread: true, unreadCount: 3, mention: true, time: '2026-11-17T11:00:00Z' });
 });
 
 test('a chat with no topic keeps one name whatever order Teams lists its members in', () => {
@@ -57,4 +57,14 @@ test('a chat with no topic keeps one name whatever order Teams lists its members
   const b = { chatType: 'group', members: [mem('a', 'Ana Ruiz'), mem(ME, 'Sean Ahn'), mem('t', 'Kai Mori')] };
   assert.strictEqual(M.chatName(a, ME), M.chatName(b, ME));
   assert.strictEqual(M.chatName(a, ME), 'Ana, Kai');
+});
+
+test('chatRow carries the whole last message for the tooltip', () => {
+  const long = 'line one<br>' + 'x'.repeat(200);
+  const r = M.chatRow(Object.assign({ id: 'c1', lastMessagePreview: msg('1', 'b', '2026-11-17T11:00:00Z', long) }, group), ME, {});
+  assert.strictEqual(r.tooltip, 'Ben Carter: line one\n' + 'x'.repeat(200));
+  assert.ok(r.preview.length < r.tooltip.length, 'the row itself stays short');
+  assert.strictEqual(M.chatRow(Object.assign({ id: 'c2', lastMessagePreview: msg('2', ME, 'x', 'hi') }, group), ME, {}).tooltip, 'You: hi');
+  assert.strictEqual(M.chatRow(Object.assign({ id: 'c5' }, group), ME, {}).tooltip, '');
+  assert.strictEqual(M.chatRow(Object.assign({ id: 'c4', lastMessagePreview: msg('4', 'b', 'x', 'y'.repeat(3000)) }, group), ME, {}).tooltip.length, 'Ben Carter: '.length + 1000, 'capped at 1,000 characters');
 });

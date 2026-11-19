@@ -205,3 +205,11 @@ test('a row\'s name and its last message have different colors', () => {
   assert.ok(/\.row \.name\s*\{[^}]*color:\s*var\(--vscode-foreground\)/.test(CSS), 'the name in the normal text color');
   assert.ok(/\.row \.preview\s*\{[^}]*color:\s*var\(--vscode-descriptionForeground\)/.test(CSS), 'the last message dimmer');
 });
+
+test('hovering a chat shows its last message', () => {
+  const p = page();
+  p.send(state({ chats: [row({ id: 'a', preview: 'X: short', tooltip: 'Xavier Ng: the whole\nmessage <b>here</b>' })] }));
+  const r = p.d.querySelector('.chats .row');
+  assert.strictEqual(r.getAttribute('title'), 'Xavier Ng: the whole\nmessage <b>here</b>');
+  assert.strictEqual(r.querySelector('b'), null, 'as text');
+});

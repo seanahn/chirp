@@ -65,6 +65,7 @@
     if (r.unread) row.classList.add('unread');
     if (r.mention) row.classList.add('mention');
     row.dataset.ref = JSON.stringify({ kind: 'chat', id: r.id });
+    if (r.tooltip) row.title = r.tooltip;   // the whole last message on hover; an attribute, so plain text
     const line = el('div', 'line');
     if (r.mention) line.append(el('span', 'at', '@'));
     line.append(el('span', 'name', r.name));

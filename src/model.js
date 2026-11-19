@@ -4,6 +4,7 @@
 const { htmlToText } = require('./html');
 
 const PREVIEW_CHARS = 80;
+const TOOLTIP_CHARS = 1000;
 const first = (name) => String(name || '').trim().split(/\s+/)[0] || '';
 // sorted by name: Teams lists a chat's members in no fixed order, and a chat's name (and file) must not change with it
 const others = (chat, meId) => (chat.members || []).filter((m) => m.userId !== meId && m.displayName).sort((x, y) => x.displayName.localeCompare(y.displayName));
@@ -46,13 +47,23 @@ function previewLine(chat, meId) {
   return `${u.id === meId ? 'You' : first(u.displayName)}: ${text}`;
 }
 
+/** The whole last message, for the row's tooltip: the sender's full name, then the text with its line breaks. */
+function tooltipText(chat, meId) {
+  const last = chat.lastMessagePreview;
+  if (!last) return '';
+  const text = htmlToText(last.body && last.body.content).slice(0, TOOLTIP_CHARS);
+  const u = last.from && last.from.user;
+  if (!u) return text;
+  return `${u.id === meId ? 'You' : u.displayName}: ${text}`;
+}
+
 function mentionsUser(message, meId) {
   return (message.mentions || []).some((m) => m && m.mentioned && m.mentioned.user && m.mentioned.user.id === meId);
 }
 
 function chatRow(chat, meId, { mention = false, unreadCount: count = null } = {}) {
   const unread = isUnread(chat, meId);
-  return { kind: 'chat', id: chat.id, name: chatName(chat, meId), preview: previewLine(chat, meId), unread, unreadCount: unread ? count : null, mention, time: (chat.lastMessagePreview && chat.lastMessagePreview.createdDateTime) || null };
+  return { kind: 'chat', id: chat.id, name: chatName(chat, meId), preview: previewLine(chat, meId), tooltip: tooltipText(chat, meId), unread, unreadCount: unread ? count : null, mention, time: (chat.lastMessagePreview && chat.lastMessagePreview.createdDateTime) || null };
 }
 
 module.exports = { chatName, isUnread, unreadCount, previewLine, mentionsUser, chatRow, PREVIEW_CHARS };
