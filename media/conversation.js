@@ -51,7 +51,7 @@
     return t.toDateString() === today.toDateString() ? time : `${t.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} ${time}`;
   }
 
-  function linkOut(a, url) { a.addEventListener('click', (e) => { e.preventDefault(); vscode.postMessage({ type: 'link', url }); }); }
+  function linkOut(a, url, attachment) { a.addEventListener('click', (e) => { e.preventDefault(); vscode.postMessage(Object.assign({ type: 'link', url }, attachment ? { attachment } : {})); }); }
 
   function body(m) {
     const b = el('div', 'body');
@@ -79,7 +79,7 @@
     }
     if (m.attachments && m.attachments.length) {
       const at = el('div', 'attachments');
-      for (const f of m.attachments) { const a = el('a', null, f.name || 'Attachment'); a.href = '#'; linkOut(a, f.url); at.append(a); }
+      for (const f of m.attachments) { const a = el('a', null, f.name || 'Attachment'); a.href = '#'; linkOut(a, f.url, f.name || 'the attachment'); at.append(a); }
       box.append(at);
     }
     if (m.reactions && m.reactions.length) {

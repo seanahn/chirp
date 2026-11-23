@@ -59,7 +59,7 @@ test('links open through the host', () => {
   p.send({ type: 'messages', reset: true, messages: [m('1', { html: '<a href="https://example.com/a">a</a>', attachments: [{ name: 'deck.pptx', url: 'https://contoso.sharepoint.com/deck.pptx' }] })] });
   p.d.querySelector('.body a').dispatchEvent(new p.w.MouseEvent('click', { bubbles: true, cancelable: true }));
   p.d.querySelector('.attachments a').dispatchEvent(new p.w.MouseEvent('click', { bubbles: true, cancelable: true }));
-  assert.deepStrictEqual(p.posted.filter((x) => x.type === 'link'), [{ type: 'link', url: 'https://example.com/a' }, { type: 'link', url: 'https://contoso.sharepoint.com/deck.pptx' }]);
+  assert.deepStrictEqual(p.posted.filter((x) => x.type === 'link'), [{ type: 'link', url: 'https://example.com/a' }, { type: 'link', url: 'https://contoso.sharepoint.com/deck.pptx', attachment: 'deck.pptx' }]);
   assert.strictEqual(p.d.querySelector('.attachments a').textContent, 'deck.pptx');
 });
 
@@ -290,4 +290,11 @@ test('a header update refreshes the title, members and @ list', () => {
   const ta = p.d.querySelector('.composer textarea');
   typeIn(p, ta, '@mi');
   assert.deepStrictEqual([...p.d.querySelectorAll('.mention-list .person')].map((x) => x.textContent), ['Mia Torres']);
+});
+
+test('an attachment click says it is an attachment', () => {
+  const p = page(); p.send(INIT);
+  p.send({ type: 'messages', reset: true, messages: [m('1', { attachments: [{ name: 'report.html', url: 'https://contoso.sharepoint.com/report.html' }] })] });
+  p.d.querySelector('.attachments a').dispatchEvent(new p.w.MouseEvent('click', { bubbles: true, cancelable: true }));
+  assert.deepStrictEqual(p.posted.filter((x) => x.type === 'link').at(-1), { type: 'link', url: 'https://contoso.sharepoint.com/report.html', attachment: 'report.html' });
 });

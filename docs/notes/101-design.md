@@ -142,6 +142,9 @@ Opening a chat that already has a tab focuses that tab.
 - Reactions show under a message as emoji with counts.
 - Images and attachments show as named links that open in the browser;
   inline images are the builder's call.
+  Clicking an attachment also says so in a notification: SharePoint
+  downloads files it can't display (like `.html`) instead of showing them,
+  and without the note that download goes unnoticed (found 2026-11-23).
 - Scrolling to the top loads older messages.
 - A message box at the bottom: Enter sends, Shift+Enter adds a newline.
 - **@mentions** (added 2026-11-18, Sean's request):

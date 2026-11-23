@@ -126,7 +126,13 @@ class Conversations {
     if (!m) return;
     if (m.type === 'ready') return this.firstLoad(tab);
     if (m.type === 'older') return this.older(tab);
-    if (m.type === 'link') { if (/^https:\/\//i.test(String(m.url || ''))) await vscode.env.openExternal(vscode.Uri.parse(m.url)); return; }
+    if (m.type === 'link') {
+      if (!/^https:\/\//i.test(String(m.url || ''))) return;
+      // a SharePoint file opens in the browser, or, for types SharePoint won't show (like .html), downloads without a word
+      if (m.attachment) vscode.window.showInformationMessage(`chirp: opening ${String(m.attachment)} in your browser. SharePoint downloads files it can't show (like .html) instead; look in your Downloads.`);
+      await vscode.env.openExternal(vscode.Uri.parse(m.url));
+      return;
+    }
     if (m.type === 'send') return this.send(tab, m);
   }
 

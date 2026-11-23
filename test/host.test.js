@@ -910,3 +910,15 @@ test('a tab loading in front, after a reload, is highlighted too', async () => {
   await openTab(h, PLAT);
   assert.ok(view.webview.posted.some((x) => x.type === 'front' && x.ref.id === PLAT));
 });
+
+test('opening an attachment says where it went', async () => {
+  ui.focused = true; ui.panels.length = 0; ui.infos.length = 0; ui.opened.length = 0;
+  const h = start(chatWorld()); ui.resolveSidebar(); await settle();
+  const panel = await openTab(h, PLAT);
+  panel.webview._receive({ type: 'link', url: 'https://contoso.sharepoint.com/personal/x/Documents/report.html', attachment: 'report.html' });
+  await settle();
+  assert.deepStrictEqual(ui.opened, ['https://contoso.sharepoint.com/personal/x/Documents/report.html']);
+  assert.deepStrictEqual(ui.infos, ["chirp: opening report.html in your browser. SharePoint downloads files it can't show (like .html) instead; look in your Downloads."]);
+  panel.webview._receive({ type: 'link', url: 'https://example.com/plain-link' }); await settle();
+  assert.strictEqual(ui.infos.length, 1, 'ordinary links in a message open without a note');
+});
