@@ -298,3 +298,11 @@ test('an attachment click says it is an attachment', () => {
   p.d.querySelector('.attachments a').dispatchEvent(new p.w.MouseEvent('click', { bubbles: true, cancelable: true }));
   assert.deepStrictEqual(p.posted.filter((x) => x.type === 'link').at(-1), { type: 'link', url: 'https://contoso.sharepoint.com/report.html', attachment: 'report.html' });
 });
+
+test('hovering a reaction shows who reacted', () => {
+  const p = page(); p.send(INIT);
+  p.send({ type: 'messages', reset: true, messages: [m('1', { reactions: [{ emoji: '👍', count: 2, who: 'Like: Ben Carter, You' }] })] });
+  const r = p.d.querySelector('.reactions .reaction');
+  assert.strictEqual(r.textContent, '👍 2');
+  assert.strictEqual(r.getAttribute('title'), 'Like: Ben Carter, You');
+});

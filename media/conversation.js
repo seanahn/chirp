@@ -84,7 +84,7 @@
     }
     if (m.reactions && m.reactions.length) {
       const r = el('div', 'reactions');
-      for (const x of m.reactions) r.append(el('span', 'reaction', `${x.emoji} ${x.count}`));
+      for (const x of m.reactions) { const s = el('span', 'reaction', `${x.emoji} ${x.count}`); if (x.who) s.title = x.who; r.append(s); }   // who reacted, on hover
       box.append(r);
     }
     return box;

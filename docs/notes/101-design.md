@@ -139,7 +139,10 @@ Opening a chat that already has a tab focuses that tab.
   the right with a tinted background, like Teams.
 - Long messages are cut after a few lines with "Show more".
 - @mentions are drawn as names in the accent color.
-- Reactions show under a message as emoji with counts.
+- Reactions show under a message as emoji with counts. Hovering one shows
+  who reacted ("Like: Ben Carter, You and 1 more"). Graph gives a
+  reaction's user an id but no name, so names come from the chat's members
+  and the senders of loaded messages; anyone else is counted.
 - Images and attachments show as named links that open in the browser;
   inline images are the builder's call.
   Clicking an attachment also says so in a notification: SharePoint

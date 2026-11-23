@@ -18,10 +18,25 @@ const byTime = (a, b) => Date.parse(a.createdDateTime) - Date.parse(b.createdDat
 const fromMe = (m, meId) => !!(m.from && m.from.user && m.from.user.id === meId);
 
 /** A Graph message as the page draws it; a channel post carries its replies, oldest first. */
-function viewMessage(m, meId) {
+/**
+ * A Graph message as the page draws it; a channel post carries its replies, oldest first.
+ * @param nameOf(id) a person's name, if chirp knows it: Graph gives reactions an id but no name
+ */
+function viewMessage(m, meId, nameOf = () => null) {
   const u = m.from && m.from.user;
-  const counts = new Map();
-  for (const r of m.reactions || []) { const e = REACTIONS[r.reactionType] || r.reactionType; counts.set(e, (counts.get(e) || 0) + 1); }
+  // reactions grouped by emoji, each with who reacted: "Like: Ben Carter, You and 1 more"
+  const groups = new Map();
+  for (const r of m.reactions || []) {
+    const e = REACTIONS[r.reactionType] || r.reactionType;
+    const g = groups.get(e) || { count: 0, label: r.displayName || '', people: [], unknown: 0 };
+    g.count++;
+    const who = r.user && r.user.user;
+    const name = who && (who.id === meId ? 'You' : who.displayName || nameOf(who.id));
+    if (name && !g.people.includes(name)) g.people.push(name); else if (!name) g.unknown++;
+    groups.set(e, g);
+  }
+  const whoText = (g) => (g.label ? g.label + ': ' : '') + g.people.join(', ')
+    + (g.unknown ? (g.people.length ? ` and ${g.unknown} more` : `${g.unknown} ${g.unknown === 1 ? 'person' : 'people'}`) : '');
   const v = {
     id: m.id,
     from: (u && u.displayName) || (m.from && m.from.application && m.from.application.displayName) || '',
@@ -30,10 +45,10 @@ function viewMessage(m, meId) {
     html: m.body && m.body.contentType === 'text' ? textToHtml(m.body.content || '') : (m.body && m.body.content) || '',
     edited: !!m.lastEditedDateTime,
     subject: m.subject || null,
-    reactions: [...counts].map(([emoji, count]) => ({ emoji, count })),
+    reactions: [...groups].map(([emoji, g]) => ({ emoji, count: g.count, who: whoText(g) })),
     attachments: (m.attachments || []).filter((a) => a.contentType === 'reference' && /^https:\/\//.test(a.contentUrl || '')).map((a) => ({ name: a.name, url: a.contentUrl })),
   };
-  if (m.replies) v.replies = m.replies.map((r) => viewMessage(r, meId));
+  if (m.replies) v.replies = m.replies.map((r) => viewMessage(r, meId, nameOf));
   return v;
 }
 
@@ -173,7 +188,7 @@ class Conversations {
     tab.panel.title = this.titleFor(tab.ref);
     tab.header = this.headerOf(tab, conv, me.id);
     tab.panel.webview.postMessage({ type: 'init', ref: tab.ref, title: tab.panel.title, members: conv.members || [], kind: conv.kind, me: { id: me.id }, canSend: this.canSend(tab), people: this.people(tab, me.id) });
-    tab.panel.webview.postMessage({ type: 'messages', reset: true, more: !!next, messages: tab.messages.map((x) => viewMessage(x, me.id)) });
+    tab.panel.webview.postMessage({ type: 'messages', reset: true, more: !!next, messages: tab.messages.map((x) => viewMessage(x, me.id, this.namer(tab))) });
     if (!this.tabs.has(tab.key)) return;   // closed meanwhile (signing out): nothing is written
     const file = this.mirror.write(conv, tab.messages);
     if (this.front === tab || tab.panel.active) { this.front = tab; this.mirror.setCurrent(file); if (this.onFront) this.onFront(tab.ref); }
@@ -186,6 +201,16 @@ class Conversations {
 
   /** A channel tab turns read-only for good once Teams refuses a post there (403). */
   canSend(tab) { return !tab.readOnly; }
+
+  /** Names for the ids Graph gives reactions: the chat's members, and everyone who wrote in what's loaded. */
+  namer(tab) {
+    const names = new Map();
+    const chat = tab.ref.kind === 'chat' && this.getChat(tab.ref.id);
+    for (const mem of (chat && chat.members) || []) if (mem.userId && mem.displayName) names.set(mem.userId, mem.displayName);
+    const add = (m) => { const u = m && m.from && m.from.user; if (u && u.id && u.displayName && !names.has(u.id)) names.set(u.id, u.displayName); };
+    for (const m of tab.messages) { add(m); for (const r of m.replies || []) add(r); }
+    return (id) => names.get(id) || null;
+  }
 
   /** The people a chat's message box offers after @: its members other than Sean, by name. Channels: none yet. */
   people(tab, meId) {
@@ -232,7 +257,7 @@ class Conversations {
       tab.panel.webview.postMessage({ type: 'removed', ids: removed });
     }
     tab.messages = tab.messages.concat(fresh);
-    if (changed.length || fresh.length) tab.panel.webview.postMessage({ type: 'messages', messages: changed.concat(fresh).map((x) => viewMessage(x, me.id)) });
+    if (changed.length || fresh.length) tab.panel.webview.postMessage({ type: 'messages', messages: changed.concat(fresh).map((x) => viewMessage(x, me.id, this.namer(tab))) });
     this.mirror.write(this.conv(tab), tab.messages);
     if (tab.ref.kind === 'chat' && fresh.some((m) => !fromMe(m, me.id))) { tab.pendingRead = true; await this.maybeMarkRead(tab); }
   }
@@ -245,7 +270,7 @@ class Conversations {
     const add = items.filter((x) => shown(x) && !have.has(x.id));
     tab.messages = add.concat(tab.messages);
     tab.next = next;
-    tab.panel.webview.postMessage({ type: 'older', more: !!next, messages: add.map((x) => viewMessage(x, me.id)) });
+    tab.panel.webview.postMessage({ type: 'older', more: !!next, messages: add.map((x) => viewMessage(x, me.id, this.namer(tab))) });
     this.mirror.write(this.conv(tab), tab.messages);
   }
 
@@ -277,7 +302,7 @@ class Conversations {
       const i = tab.messages.findIndex((x) => x.id === target.postId);
       if (i >= 0 && !tab.messages[i].replies.some((x) => x.id === msg.id)) tab.messages[i] = Object.assign({}, tab.messages[i], { replies: tab.messages[i].replies.concat([msg]) });
     } else if (msg.id && !tab.messages.some((x) => x.id === msg.id)) tab.messages.push(tab.ref.kind === 'channel' ? tidyPost(msg) : msg);
-    tab.panel.webview.postMessage({ type: 'sent', pendingId: m.pendingId, message: viewMessage(msg, me.id) });
+    tab.panel.webview.postMessage({ type: 'sent', pendingId: m.pendingId, message: viewMessage(msg, me.id, this.namer(tab)) });
     this.mirror.write(this.conv(tab), tab.messages);
   }
 

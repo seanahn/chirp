@@ -922,3 +922,26 @@ test('opening an attachment says where it went', async () => {
   panel.webview._receive({ type: 'link', url: 'https://example.com/plain-link' }); await settle();
   assert.strictEqual(ui.infos.length, 1, 'ordinary links in a message open without a note');
 });
+
+// ---- who reacted
+test('a reaction says who reacted', async () => {
+  const { viewMessage } = require('../src/conversation');
+  const react = (type, id) => ({ reactionType: type, displayName: type === 'like' ? 'Like' : 'Heart', user: { user: { id, displayName: null } } });
+  const m = msg('m1', 'b', '2026-11-17T09:00:00Z', 'hi', { reactions: [react('like', 'b'), react('like', 'me'), react('like', 'stranger'), react('heart', 'b')] });
+  const names = new Map([['b', 'Ben Carter']]);
+  const v = viewMessage(m, 'me', (id) => names.get(id) || null);
+  assert.deepStrictEqual(v.reactions, [
+    { emoji: '👍', count: 3, who: 'Like: Ben Carter, You and 1 more' },
+    { emoji: '❤️', count: 1, who: 'Heart: Ben Carter' },
+  ]);
+});
+
+test('reactions in a chat tab are named from its members', async () => {
+  ui.focused = true; ui.panels.length = 0;
+  const w = chatWorld();
+  w.messages[PLAT][0].reactions = [{ reactionType: 'like', displayName: 'Like', user: { user: { id: 'b', displayName: null } } }];
+  const h = start(w); ui.resolveSidebar(); await settle();
+  const panel = await openTab(h, PLAT);
+  const sent = panel.webview.posted.find((x) => x.type === 'messages').messages.find((x) => x.id === 'm2');
+  assert.deepStrictEqual(sent.reactions, [{ emoji: '👍', count: 1, who: 'Like: Ben Carter' }]);
+});
