@@ -21,7 +21,7 @@ body { margin: 0; padding: 0; display: flex; flex-direction: column; font-family
 .msg .attachments a { display: block; font-size: 12px; }
 .msg .attachments a::before { content: '📎 '; }
 .msg .reactions { margin-top: 4px; display: flex; gap: 6px; }
-.msg .reaction { font-size: 11px; padding: 0 6px; border-radius: 8px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
+.msg .reaction { font-size: 11px; padding: 0 6px; border-radius: 8px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); cursor: default; user-select: none; }
 .msg .error { font-size: 11px; color: var(--vscode-errorForeground); margin-top: 4px; }
 .composer { padding: 8px 16px 12px; border-top: 1px solid var(--vscode-panel-border, transparent); }
 .composer textarea, .reply textarea { box-sizing: border-box; width: 100%; resize: none; min-height: 2.4em; font-family: inherit; font-size: inherit; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); border-radius: 4px; padding: 6px 8px; }
