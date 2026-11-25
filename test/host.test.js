@@ -337,6 +337,26 @@ test('a reaction on a chat message: set, then unset; the message comes back as i
   panel.dispose(); h.api.dispose();
 });
 
+test('a removed reaction stays removed when Teams\' next answer is still the old one', async () => {
+  ui.focused = true; ui.panels.length = 0;
+  const w = chatWorld();
+  w.messages[PLAT][0].reactions = [{ reactionType: '🎉', user: { user: { id: 'me' } } }, { reactionType: '👍', user: { user: { id: 'b' } } }];
+  const h = start(w); ui.resolveSidebar(); await settle();
+  const panel = await openTab(h, PLAT);
+  panel.webview._receive({ type: 'react', id: 'm2', emoji: '🎉', on: false }); await settle();
+  assert.deepStrictEqual(reactions(panel.webview.posted, 'm2'), [{ emoji: '👍', count: 1, who: 'Ben Carter', mine: false }]);
+  // Graph lags: the message comes back changed (Ben added one) but still with Sean's 🎉
+  w.messages[PLAT][0] = Object.assign({}, w.messages[PLAT][0], { lastModifiedDateTime: '2030-01-01T00:00:00Z', reactions: w.messages[PLAT][0].reactions.concat([{ reactionType: '❤️', user: { user: { id: 'b' } } }]) });
+  await h.api.conversations.poll('chat:' + PLAT);
+  assert.deepStrictEqual(reactions(panel.webview.posted, 'm2').map((r) => [r.emoji, r.mine]), [['👍', false], ['❤️', false]], 'no 🎉 back; Ben\'s new one shows');
+  // and a set one isn't taken away by an answer from before it
+  panel.webview._receive({ type: 'react', id: 'm2', emoji: '😆', on: true }); await settle();
+  w.messages[PLAT][0] = Object.assign({}, w.messages[PLAT][0], { lastModifiedDateTime: '2030-01-01T00:00:01Z' });
+  await h.api.conversations.poll('chat:' + PLAT);
+  assert.deepStrictEqual(reactions(panel.webview.posted, 'm2').map((r) => [r.emoji, r.mine]), [['👍', false], ['❤️', false], ['😆', true]]);
+  panel.dispose(); h.api.dispose();
+});
+
 test('an old-style reaction of mine (like) shows as mine and is unset by its own name', async () => {
   ui.focused = true; ui.panels.length = 0;
   const w = chatWorld();

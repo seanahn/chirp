@@ -8,6 +8,7 @@ const model = require('./model');
 const { createSender } = require('./sender');
 
 const OPEN_TAB_MS = 5000;
+const REACTION_SETTLE_MS = 30000;   // how long a reaction change is kept over polled answers that don't have it yet
 const CHAT_PAGE = 50, CHANNEL_PAGE = 20;
 const VIEW_TYPE = 'chirp.conversation';
 const REACTIONS = { like: '👍', heart: '❤️', laugh: '😆', surprised: '😮', sad: '😢', angry: '😡' };
@@ -265,7 +266,8 @@ class Conversations {
     const { items } = await this.fetchPage(tab);
     const known = new Map(tab.messages.map((x, i) => [x.id, i]));
     const changed = [], fresh = [], removed = [];
-    for (const m of items) {
+    for (const m0 of items) {
+      const m = this.keepMyReactions(tab, m0, me.id);
       if (!known.has(m.id)) { if (shown(m)) fresh.push(m); continue; }
       if (m.deletedDateTime) { removed.push(m.id); continue; }
       const i = known.get(m.id);
@@ -371,8 +373,43 @@ class Conversations {
     const next = replyTo ? Object.assign({}, post, { replies: post.replies.map((x) => (x === target ? changed : x)) }) : changed;
     const i = tab.messages.indexOf(post);
     if (i >= 0) tab.messages[i] = next;
+    // Graph can answer with the message as it was for a few seconds after; keep this change over those answers
+    tab.myReactions = tab.myReactions || new Map();
+    const key = (replyTo || '') + '/' + m.id;
+    const mine = tab.myReactions.get(key) || new Map();
+    mine.set(m.emoji, { on, reactionType, until: Date.now() + REACTION_SETTLE_MS });
+    tab.myReactions.set(key, mine);
     send(next);
     this.mirror.write(this.conv(tab), tab.messages);
+  }
+
+  /**
+   * A polled message with Sean's recent reaction changes put back over it while Graph catches up: a removed one stays
+   * removed and a set one stays set; everyone else's reactions are as Graph says. A change is forgotten once Graph agrees
+   * or after REACTION_SETTLE_MS.
+   */
+  keepMyReactions(tab, m, meId) {
+    if (!tab.myReactions || !tab.myReactions.size) return m;
+    const now = Date.now();
+    const emojiOf = (r) => REACTIONS[r.reactionType] || r.reactionType;
+    const mineOf = (r) => r.user && r.user.user && r.user.user.id === meId;
+    const fix = (target, key) => {
+      const mine = tab.myReactions.get(key);
+      if (!mine || !target) return target;
+      let reactions = target.reactions || [];
+      for (const [emoji, x] of mine) {
+        const has = reactions.some((r) => mineOf(r) && emojiOf(r) === emoji);
+        if (has === x.on || x.until < now) { mine.delete(emoji); continue; }   // Graph agrees, or it's had long enough
+        reactions = x.on ? reactions.concat([{ reactionType: x.reactionType, user: { user: { id: meId } } }])
+          : reactions.filter((r) => !(mineOf(r) && emojiOf(r) === emoji));
+      }
+      if (!mine.size) tab.myReactions.delete(key);
+      return reactions === (target.reactions || []) ? target : Object.assign({}, target, { reactions });
+    };
+    const post = fix(m, '/' + m.id);
+    if (!post.replies) return post;
+    const replies = post.replies.map((r) => fix(r, m.id + '/' + r.id));
+    return replies.every((r, i) => r === post.replies[i]) ? post : Object.assign({}, post, { replies });
   }
 
   /** Marks the chat read in Teams, only while its tab is on screen and the window has focus. */
