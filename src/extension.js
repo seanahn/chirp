@@ -304,7 +304,7 @@ function activate(context, deps = {}) {
 
   const mirror = createMirror({ dir: deps.chirpDir || path.join(os.homedir(), '.chirp'), enabled: () => cfg('agentFiles') !== false });
   const conversations = new Conversations({
-    api, g, mirror, log, isFocused, extensionUri: context.extensionUri,
+    prefs: context.globalState, api, g, mirror, log, isFocused, extensionUri: context.extensionUri,
     me: ensureMe, meId: () => (s.me ? s.me.id : null), tenantId: () => auth.tenantId(),
     getChat: (id) => s.chats.find((c) => c.id === id), getChannel,
     addPoller: (run, everyMs) => addPoller(run, everyMs),

@@ -62,9 +62,10 @@
     return b;
   }
 
-  function messageEl(m) {
+  function messageEl(m, replyTo) {
     const box = el('div', 'msg' + (m.mine ? ' mine' : '') + (m.pending ? ' pending' : ''));
     box.dataset.id = m.id;
+    if (replyTo) box.dataset.replyTo = replyTo;
     const meta = el('div', 'meta');
     meta.append(el('span', 'sender', m.from || ''), el('span', 'time', when(m.time)));
     if (m.edited) meta.append(el('span', 'edited', 'Edited'));
@@ -82,10 +83,10 @@
       for (const f of m.attachments) { const a = el('a', null, f.name || 'Attachment'); a.href = '#'; linkOut(a, f.url, f.name || 'the attachment'); at.append(a); }
       box.append(at);
     }
-    if (m.reactions && m.reactions.length) {
-      const r = el('div', 'reactions');
-      for (const x of m.reactions) { const s = el('span', 'reaction', `${x.emoji} ${x.count}`); if (x.who) s.title = x.who; r.append(s); }   // who reacted, on hover
-      box.append(r);
+    if (!m.pending) {
+      reactionsOf.set(box, (m.reactions || []).map((x) => Object.assign({}, x)));
+      drawReactions(box);
+      box.append(reactBar(box));
     }
     return box;
   }
@@ -110,7 +111,7 @@
       more.addEventListener('click', (e) => { e.preventDefault(); expanded.add(p.id); cardEl(p, card); });
       replies.append(more);
     }
-    for (const r of all.slice(hidden)) replies.append(messageEl(r));
+    for (const r of all.slice(hidden)) replies.append(messageEl(r, p.id));
     replies.append(...pending);
     card.append(replies);
     let reply = keptReply;
@@ -280,6 +281,129 @@
         err.append(retry);
       }
       box.append(err);
+    }
+  });
+
+  // ---- reactions. A click shows the change at once and asks the host, whose answer (the message as Teams now has it)
+  // replaces the guess; a refusal comes back as the message unchanged, plus a note.
+  const QUICK = ['👍', '❤️', '😆', '😮', '😢', '😡'];
+  const TONES = ['', '\u{1F3FB}', '\u{1F3FC}', '\u{1F3FD}', '\u{1F3FE}', '\u{1F3FF}'];
+  const RECENT_MAX = 16;
+  const reactionsOf = new WeakMap();   // .msg -> [{ emoji, count, who, mine }]
+  let prefs = { recent: [], tone: '' };
+
+  function drawReactions(box) {
+    const list = reactionsOf.get(box) || [];
+    let r = box.querySelector(':scope > .reactions');
+    if (!list.length) { if (r) r.remove(); return; }
+    if (!r) { r = el('div', 'reactions'); const bar = box.querySelector(':scope > .react-bar'); if (bar) bar.before(r); else box.append(r); }
+    r.replaceChildren(...list.map((x) => {
+      const chip = el('button', 'reaction' + (x.mine ? ' mine' : ''), `${x.emoji} ${x.count}`);
+      if (x.who) chip.title = x.who;   // who reacted, on hover
+      chip.addEventListener('click', () => react(box, x.emoji));
+      return chip;
+    }));
+  }
+  /** Mine on, or off if it is mine already. */
+  function react(box, emoji) {
+    const list = reactionsOf.get(box) || [];
+    const x = list.find((y) => y.emoji === emoji);
+    const on = !(x && x.mine);
+    if (x) { x.count += on ? 1 : -1; x.mine = on; } else list.push({ emoji, count: 1, who: 'You', mine: true });
+    reactionsOf.set(box, list.filter((y) => y.count > 0));
+    drawReactions(box);
+    vscode.postMessage(Object.assign({ type: 'react', id: box.dataset.id }, box.dataset.replyTo ? { replyTo: box.dataset.replyTo } : {}, { emoji, on }));
+  }
+  function reactBar(box) {
+    const bar = el('div', 'react-bar');
+    for (const e of QUICK) {
+      const b = el('button', 'quick', e); b.title = 'React ' + e;
+      b.addEventListener('click', () => react(box, e));
+      bar.append(b);
+    }
+    const more = el('button', 'add', '+'); more.title = 'More reactions';
+    more.addEventListener('click', (ev) => { ev.stopPropagation(); openPicker(box, more); });
+    bar.append(more);
+    return bar;
+  }
+
+  // the picker: every emoji, built on first use from emoji-data.js
+  let emojiGroups = null, picker = null;
+  function groups() {
+    if (emojiGroups) return emojiGroups;
+    emojiGroups = (window.CHIRP_EMOJI || []).map(([name, items]) => [name, items.split('|').map((it) => {
+      const i = it.indexOf(' '), tok = it.slice(0, i);
+      const toned = tok.endsWith('~');
+      return { emoji: toned ? tok.slice(0, -1) : tok, toned, name: it.slice(i + 1) };
+    })]);
+    return emojiGroups;
+  }
+  const withTone = (x) => (x.toned && prefs.tone ? x.emoji.replace(/\uFE0F/g, '') + prefs.tone : x.emoji);
+  function closePicker() { if (picker) { picker.node.remove(); picker = null; } }
+  function choose(box, emoji) {
+    closePicker();
+    prefs = { recent: [emoji].concat(prefs.recent.filter((e) => e !== emoji)).slice(0, RECENT_MAX), tone: prefs.tone };
+    vscode.postMessage({ type: 'emojiPrefs', recent: prefs.recent, tone: prefs.tone });
+    const x = (reactionsOf.get(box) || []).find((y) => y.emoji === emoji);
+    if (!(x && x.mine)) react(box, emoji);
+  }
+  function openPicker(box, from) {
+    closePicker();
+    const node = el('div', 'emoji-picker');
+    const search = el('input', 'search'); search.placeholder = 'Search emoji';
+    const tones = el('div', 'tones');
+    const recent = el('div', 'recent');
+    const grid = el('div', 'grid');
+    const cells = [];
+    const button = (emoji, title) => { const b = el('button', null, emoji); if (title) b.title = title; b.addEventListener('click', () => choose(box, b.textContent)); return b; };
+    TONES.forEach((t, i) => {
+      const b = el('button', t === prefs.tone ? 'on' : '', t ? '\u{270B}' + t : '\u{270B}');
+      b.title = ['Default', 'Light', 'Medium-light', 'Medium', 'Medium-dark', 'Dark'][i] + ' skin tone';
+      b.addEventListener('click', () => {
+        prefs = { recent: prefs.recent, tone: t };
+        tones.querySelectorAll('button').forEach((x, j) => x.classList.toggle('on', j === i));
+        for (const c of cells) c.node.textContent = withTone(c.x);
+        vscode.postMessage({ type: 'emojiPrefs', recent: prefs.recent, tone: prefs.tone });
+      });
+      tones.append(b);
+    });
+    recent.append(...prefs.recent.map((e) => button(e)));
+    if (!prefs.recent.length) recent.hidden = true;
+    for (const [name, items] of groups()) {
+      const head = el('div', 'group', name);
+      grid.append(head);
+      const heads = { node: head, cells: [] };
+      for (const x of items) { const c = { x, node: button(withTone(x), x.name), head: heads }; cells.push(c); heads.cells.push(c); grid.append(c.node); }
+    }
+    search.addEventListener('input', () => {
+      const q = search.value.trim().toLowerCase();
+      recent.hidden = !!q || !prefs.recent.length;
+      for (const c of cells) c.node.hidden = !!q && !c.x.name.includes(q);
+      for (const h of new Set(cells.map((c) => c.head))) h.node.hidden = h.cells.every((c) => c.node.hidden);
+    });
+    node.append(search, tones, recent, grid);
+    d.body.append(node);
+    const r = from.getBoundingClientRect(), vw = window.innerWidth || 800, vh = window.innerHeight || 600;
+    // below the + when it fits, else above it, always inside the window
+    const W = 320, H = 330, M = 4;
+    node.style.left = Math.max(M, Math.min(r.right - W, vw - W - M)) + 'px';
+    node.style.top = (r.bottom + M + H <= vh - M ? r.bottom + M : Math.max(M, Math.min(r.top - M - H, vh - H - M))) + 'px';
+    picker = { node, box };
+    search.focus();
+  }
+  d.addEventListener('keydown', (e) => { if (e.key === 'Escape' && picker) { e.preventDefault(); closePicker(); } });
+  d.addEventListener('mousedown', (e) => { if (picker && !picker.node.contains(e.target)) closePicker(); });
+  list.addEventListener('scroll', () => closePicker());
+
+  window.addEventListener('message', (e) => {
+    const m = e.data || {};
+    if (m.type === 'init' && m.emoji) prefs = { recent: Array.isArray(m.emoji.recent) ? m.emoji.recent.slice(0, RECENT_MAX) : [], tone: TONES.includes(m.emoji.tone) ? m.emoji.tone : '' };
+    else if (m.type === 'reactFailed') {
+      const box = [...d.querySelectorAll('.msg')].find((x) => x.dataset.id === m.id);
+      if (!box) return;
+      const err = el('div', 'error', m.error || 'The reaction was not saved');
+      box.append(err);
+      setTimeout(() => err.remove(), 8000);
     }
   });
 

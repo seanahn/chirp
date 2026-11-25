@@ -19,6 +19,9 @@ chirp is not made by or affiliated with Microsoft.
   visible and the window has focus.
 - **Channel tabs:** one card per post, with its last two replies and a
   reply box, and a box at the bottom for a new post.
+- **Reactions:** click a reaction under a message to add yours or take it
+  back. Hovering a message shows six quick reactions and **+**, which opens
+  every emoji with a search, your recent ones and a skin tone.
 
 ## Signing in
 
@@ -94,4 +97,5 @@ What chirp is for and the decisions behind it:
 
 ## License
 
-MIT
+MIT. The emoji list (`media/emoji-data.js`) comes from Unicode's
+`emoji-test.txt` under the Unicode License v3; see `LICENSE`.

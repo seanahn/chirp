@@ -11,6 +11,11 @@ const OPEN_TAB_MS = 5000;
 const CHAT_PAGE = 50, CHANNEL_PAGE = 20;
 const VIEW_TYPE = 'chirp.conversation';
 const REACTIONS = { like: '👍', heart: '❤️', laugh: '😆', surprised: '😮', sad: '😢', angry: '😡' };
+/** One emoji, as Teams takes a reaction (with its variation selector or a skin tone). */
+const EMOJI = /^\p{RGI_Emoji}$/v;
+const TONES = ['', '\u{1F3FB}', '\u{1F3FC}', '\u{1F3FD}', '\u{1F3FE}', '\u{1F3FF}'];
+const RECENT_MAX = 16;
+const EMOJI_PREFS_KEY = 'chirp.emojiPrefs';
 const keyOf = (ref) => (ref.kind === 'channel' ? `channel:${ref.teamId}/${ref.id}` : `chat:${ref.id}`);
 const real = (m) => m && (m.messageType || 'message') === 'message';
 const shown = (m) => real(m) && !m.deletedDateTime;
@@ -28,9 +33,10 @@ function viewMessage(m, meId, nameOf = () => null) {
   const groups = new Map();
   for (const r of m.reactions || []) {
     const e = REACTIONS[r.reactionType] || r.reactionType;
-    const g = groups.get(e) || { count: 0, label: r.displayName || '', people: [], unknown: 0 };
+    const g = groups.get(e) || { count: 0, label: r.displayName || '', people: [], unknown: 0, mine: false };
     g.count++;
     const who = r.user && r.user.user;
+    if (who && who.id === meId) g.mine = true;
     const name = who && (who.id === meId ? 'You' : who.displayName || nameOf(who.id));
     if (name && !g.people.includes(name)) g.people.push(name); else if (!name) g.unknown++;
     groups.set(e, g);
@@ -45,7 +51,7 @@ function viewMessage(m, meId, nameOf = () => null) {
     html: m.body && m.body.contentType === 'text' ? textToHtml(m.body.content || '') : (m.body && m.body.content) || '',
     edited: !!m.lastEditedDateTime,
     subject: m.subject || null,
-    reactions: [...groups].map(([emoji, g]) => ({ emoji, count: g.count, who: whoText(g) })),
+    reactions: [...groups].map(([emoji, g]) => ({ emoji, count: g.count, who: whoText(g), mine: g.mine })),
     attachments: (m.attachments || []).filter((a) => a.contentType === 'reference' && /^https:\/\//.test(a.contentUrl || '')).map((a) => ({ name: a.name, url: a.contentUrl })),
   };
   if (m.replies) v.replies = m.replies.map((r) => viewMessage(r, meId, nameOf));
@@ -68,6 +74,7 @@ class Conversations {
    * @param o.onRead(chatId)    a chat was marked read (the sidebar un-bolds it)
    * @param o.onOpened(key)     a conversation was opened (its mention clears)
    * @param o.addPoller(run, everyMs)
+   * @param o.prefs             a Memento for the emoji picker's recent emoji and skin tone (globalState); optional
    */
   constructor(o) {
     Object.assign(this, o);
@@ -131,10 +138,11 @@ class Conversations {
     const media = vscode.Uri.joinPath(this.extensionUri, 'media');
     const css = webview.asWebviewUri(vscode.Uri.joinPath(media, 'conversation.css'));
     const js = webview.asWebviewUri(vscode.Uri.joinPath(media, 'conversation.js'));
+    const emoji = webview.asWebviewUri(vscode.Uri.joinPath(media, 'emoji-data.js'));
     const csp = webview.cspSource;
     return `<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp}; img-src ${csp} https: data:; script-src 'nonce-${nonce}';">
-<link rel="stylesheet" href="${css}"></head><body><script nonce="${nonce}" src="${js}"></script></body></html>`;
+<link rel="stylesheet" href="${css}"></head><body><script nonce="${nonce}" src="${emoji}"></script><script nonce="${nonce}" src="${js}"></script></body></html>`;
   }
 
   async receive(tab, m) {
@@ -149,6 +157,19 @@ class Conversations {
       return;
     }
     if (m.type === 'send') return this.send(tab, m);
+    if (m.type === 'react') return this.react(tab, m);
+    if (m.type === 'emojiPrefs') return this.saveEmojiPrefs(m);
+  }
+
+  /** The picker's recent emoji and skin tone, the same in every tab (globalState). */
+  emojiPrefs() {
+    const v = (this.prefs && this.prefs.get(EMOJI_PREFS_KEY)) || {};
+    return { recent: Array.isArray(v.recent) ? v.recent.filter((e) => typeof e === 'string' && EMOJI.test(e)).slice(0, RECENT_MAX) : [], tone: TONES.includes(v.tone) ? v.tone : '' };
+  }
+  saveEmojiPrefs(m) {
+    if (!this.prefs || !Array.isArray(m.recent) || !TONES.includes(m.tone)) return;
+    const recent = m.recent.filter((e) => typeof e === 'string' && e.length <= 32 && EMOJI.test(e)).slice(0, RECENT_MAX);
+    return this.prefs.update(EMOJI_PREFS_KEY, { recent, tone: m.tone });
   }
 
   conv(tab) {
@@ -187,7 +208,7 @@ class Conversations {
     const conv = this.conv(tab);
     tab.panel.title = this.titleFor(tab.ref);
     tab.header = this.headerOf(tab, conv, me.id);
-    tab.panel.webview.postMessage({ type: 'init', ref: tab.ref, title: tab.panel.title, members: conv.members || [], kind: conv.kind, me: { id: me.id }, canSend: this.canSend(tab), people: this.people(tab, me.id) });
+    tab.panel.webview.postMessage({ type: 'init', ref: tab.ref, title: tab.panel.title, members: conv.members || [], kind: conv.kind, me: { id: me.id }, canSend: this.canSend(tab), people: this.people(tab, me.id), emoji: this.emojiPrefs() });
     tab.panel.webview.postMessage({ type: 'messages', reset: true, more: !!next, messages: tab.messages.map((x) => viewMessage(x, me.id, this.namer(tab))) });
     if (!this.tabs.has(tab.key)) return;   // closed meanwhile (signing out): nothing is written
     const file = this.mirror.write(conv, tab.messages);
@@ -303,6 +324,54 @@ class Conversations {
       if (i >= 0 && !tab.messages[i].replies.some((x) => x.id === msg.id)) tab.messages[i] = Object.assign({}, tab.messages[i], { replies: tab.messages[i].replies.concat([msg]) });
     } else if (msg.id && !tab.messages.some((x) => x.id === msg.id)) tab.messages.push(tab.ref.kind === 'channel' ? tidyPost(msg) : msg);
     tab.panel.webview.postMessage({ type: 'sent', pendingId: m.pendingId, message: viewMessage(msg, me.id, this.namer(tab)) });
+    this.mirror.write(this.conv(tab), tab.messages);
+  }
+
+  /**
+   * Sets or removes Sean's reaction on a message, a post or a reply, then sends the page the message as it now is: the
+   * page shows the change at once and puts this answer in its place, so a refusal puts it back. One at a time per message.
+   * @param m { id, replyTo?: the post a reply is under, emoji, on }
+   */
+  react(tab, m) {
+    if (!m || typeof m.id !== 'string' || typeof m.emoji !== 'string' || m.emoji.length > 32) return;
+    tab.reacting = tab.reacting || new Map();
+    const key = (m.replyTo || '') + '/' + m.id;
+    const run = (tab.reacting.get(key) || Promise.resolve()).then(() => this.reactNow(tab, m)).catch((e) => this.log(e));
+    tab.reacting.set(key, run);
+    return run;
+  }
+
+  async reactNow(tab, m) {
+    const replyTo = tab.ref.kind === 'channel' && typeof m.replyTo === 'string' ? m.replyTo : null;
+    const pi = tab.messages.findIndex((x) => x.id === (replyTo || m.id));
+    if (pi < 0) return;
+    const post = tab.messages[pi];
+    const target = replyTo ? (post.replies || []).find((x) => x.id === m.id) : post;
+    if (!target) return;
+    const me = await this.me();
+    const emojiOf = (r) => REACTIONS[r.reactionType] || r.reactionType;
+    const mineOf = (r) => r.user && r.user.user && r.user.user.id === me.id;
+    const all = target.reactions || [];
+    const on = !!m.on;
+    // what Teams is told: a new reaction must be one emoji; removing one of mine uses the name Teams gave it ('like', say)
+    const old = all.find((r) => mineOf(r) && emojiOf(r) === m.emoji);
+    if (on ? (old || !EMOJI.test(m.emoji)) : !old) return;
+    const reactionType = on ? m.emoji : old.reactionType;
+    const ref = tab.ref.kind === 'chat' ? { kind: 'chat', chatId: tab.ref.id, id: m.id }
+      : { kind: 'channel', teamId: tab.ref.teamId, channelId: tab.ref.id, id: m.id, postId: replyTo || undefined };
+    const send = (message) => tab.panel.webview.postMessage({ type: 'messages', messages: [viewMessage(message, me.id, this.namer(tab))] });
+    try { await this.api.react(this.g, ref, reactionType, on); }
+    catch (e) {
+      send(post);   // first: it redraws the message, which the note then goes on
+      tab.panel.webview.postMessage({ type: 'reactFailed', id: m.id, error: e && e.status === 403 ? 'Teams refused the reaction (403).' : String((e && e.message) || e) });
+      return;
+    }
+    const reactions = on ? all.concat([{ reactionType, user: { user: { id: me.id } } }]) : all.filter((r) => r !== old);
+    const changed = Object.assign({}, target, { reactions });
+    const next = replyTo ? Object.assign({}, post, { replies: post.replies.map((x) => (x === target ? changed : x)) }) : changed;
+    const i = tab.messages.indexOf(post);
+    if (i >= 0) tab.messages[i] = next;
+    send(next);
     this.mirror.write(this.conv(tab), tab.messages);
   }
 

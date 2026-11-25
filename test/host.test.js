@@ -39,6 +39,7 @@ function graph(world) {
     if (p.startsWith('/me/chats')) return ok({ value: world.chats });
     let m = /^\/chats\/([^/]+)\/messages\?\$top=(\d+)/.exec(p);
     if (m) return ok({ value: (world.messages[m[1]] || []).slice(0, Number(m[2])) });
+    if (/\/(set|unset)Reaction$/.test(p) && init.method === 'POST') return new Response(null, { status: 204 });
     if (/markChatReadForUser$/.test(p)) { world.marked.push(p.split('/')[2]); return new Response(null, { status: 204 }); }
     m = /^\/chats\/([^/]+)\/messages$/.exec(p);
     if (m && init.method === 'POST') { const body = JSON.parse(init.body).body.content; const sent = msg('s' + calls.length, 'me', new Date().toISOString(), body); (world.messages[m[1]] = world.messages[m[1]] || []).unshift(sent); return ok(sent); }
@@ -319,6 +320,75 @@ test('a refused send reports failure', async () => {
   assert.deepStrictEqual([failed.pendingId, failed.retryable], ['p2', true]);
 });
 
+// ---- reactions: the page asks, the host sets or unsets it in Teams, then sends the message back as it now is
+const reactions = (posted, id) => { const ms = posted.filter((x) => x.type === 'messages').flatMap((x) => x.messages); const m = ms.filter((x) => x.id === id).at(-1); return m && m.reactions; };
+const reactCalls = (h) => h.fetch.calls.filter((c) => /Reaction$/.test(c.path)).map((c) => [c.path, JSON.parse(c.body)]);
+
+test('a reaction on a chat message: set, then unset; the message comes back as it now is', async () => {
+  ui.focused = true; ui.panels.length = 0;
+  const h = start(chatWorld()); ui.resolveSidebar(); await settle();
+  const panel = await openTab(h, PLAT);
+  panel.webview._receive({ type: 'react', id: 'm2', emoji: '🎉', on: true }); await settle();
+  assert.deepStrictEqual(reactions(panel.webview.posted, 'm2'), [{ emoji: '🎉', count: 1, who: 'You', mine: true }]);
+  panel.webview._receive({ type: 'react', id: 'm2', emoji: '🎉', on: false }); await settle();
+  assert.deepStrictEqual(reactions(panel.webview.posted, 'm2'), []);
+  assert.deepStrictEqual(reactCalls(h), [[`/chats/${PLAT}/messages/m2/setReaction`, { reactionType: '🎉' }], [`/chats/${PLAT}/messages/m2/unsetReaction`, { reactionType: '🎉' }]]);
+  assert.ok(!panel.webview.posted.some((x) => x.type === 'reactFailed'));
+  panel.dispose(); h.api.dispose();
+});
+
+test('an old-style reaction of mine (like) shows as mine and is unset by its own name', async () => {
+  ui.focused = true; ui.panels.length = 0;
+  const w = chatWorld();
+  w.messages[PLAT][0].reactions = [{ reactionType: 'like', user: { user: { id: 'me' } } }, { reactionType: 'like', user: { user: { id: 'b' } } }];
+  const h = start(w); ui.resolveSidebar(); await settle();
+  const panel = await openTab(h, PLAT);
+  assert.deepStrictEqual(reactions(panel.webview.posted, 'm2'), [{ emoji: '👍', count: 2, who: 'You, Ben Carter', mine: true }]);
+  panel.webview._receive({ type: 'react', id: 'm2', emoji: '👍', on: false }); await settle();
+  assert.deepStrictEqual(reactCalls(h), [[`/chats/${PLAT}/messages/m2/unsetReaction`, { reactionType: 'like' }]]);
+  assert.deepStrictEqual(reactions(panel.webview.posted, 'm2'), [{ emoji: '👍', count: 1, who: 'Ben Carter', mine: false }]);
+  panel.dispose(); h.api.dispose();
+});
+
+test('a refused reaction says so and sends the message back unchanged, so the page puts it back', async () => {
+  ui.focused = true; ui.panels.length = 0;
+  const h = start(chatWorld()); ui.resolveSidebar(); await settle();
+  const panel = await openTab(h, PLAT);
+  h.world.fail = (p) => (/setReaction$/.test(p) ? new Response(JSON.stringify({ error: { code: 'Forbidden', message: 'no' } }), { status: 403 }) : undefined);
+  const before = panel.webview.posted.length;
+  panel.webview._receive({ type: 'react', id: 'm2', emoji: '👍', on: true }); await settle();
+  const after = panel.webview.posted.slice(before);
+  const failed = after.find((x) => x.type === 'reactFailed');
+  assert.strictEqual(failed.id, 'm2'); assert.ok(failed.error.length > 0);
+  assert.deepStrictEqual(reactions(after, 'm2'), []);
+  panel.dispose(); h.api.dispose();
+});
+
+test('a reaction that is not an emoji, or on a message the tab does not have, goes nowhere', async () => {
+  ui.focused = true; ui.panels.length = 0;
+  const h = start(chatWorld()); ui.resolveSidebar(); await settle();
+  const panel = await openTab(h, PLAT);
+  for (const emoji of ['', 'hello', '<b>', '👍'.repeat(20), 42]) panel.webview._receive({ type: 'react', id: 'm2', emoji, on: true });
+  panel.webview._receive({ type: 'react', id: 'nope', emoji: '👍', on: true }); await settle();
+  assert.deepStrictEqual(reactCalls(h), []);
+  panel.dispose(); h.api.dispose();
+});
+
+test('recent emoji and the skin tone are kept for every tab, and the page loads the emoji list', async () => {
+  ui.focused = true; ui.panels.length = 0;
+  const saved = memento();
+  const h = start(chatWorld(), { memento: saved }); ui.resolveSidebar(); await settle();
+  const panel = await openTab(h, PLAT);
+  assert.match(panel.webview.html, /<script nonce="[^"]+" src="[^"]*emoji-data\.js"><\/script><script nonce="[^"]+" src="[^"]*conversation\.js">/);
+  assert.deepStrictEqual(panel.webview.posted.find((x) => x.type === 'init').emoji, { recent: [], tone: '' });
+  panel.webview._receive({ type: 'emojiPrefs', recent: ['🎉', '👍\u{1F3FD}', 'nope', '<b>'], tone: '\u{1F3FD}' }); await settle();
+  panel.webview._receive({ type: 'emojiPrefs', recent: ['🎉'], tone: 'x' }); await settle();   // a bad tone: nothing kept
+  panel.dispose();
+  const again = await openTab(h, PLAT);
+  assert.deepStrictEqual(again.webview.posted.find((x) => x.type === 'init').emoji, { recent: ['🎉', '👍\u{1F3FD}'], tone: '\u{1F3FD}' });
+  again.dispose(); h.api.dispose();
+});
+
 // ---- channels (Task 11)
 const TEAM = 'T1', CHAN = '19:Xq7TfGkL2mPz9RbW4nVhJ8sYd5KwA6uE1oNiBtF2xy0@thread.tacv2';
 function channelWorld() {
@@ -373,6 +443,19 @@ test('new post and reply targets', async () => {
   const text = fs.readFileSync(path.join(h.dir, '.chirp', 'current.teams'), 'utf8');
   assert.ok(/first\n[\s\S]*    \[[^\]]+\] Sean Ahn \(id [^)]+\):\n      a reply/.test(text), 'the reply is filed under its post');
   assert.ok(text.includes('a post'));
+});
+
+test('reactions on a channel post and on a reply go to their own paths; the post comes back with its replies', async () => {
+  ui.focused = true; ui.panels.length = 0;
+  const h = start(channelWorld()); ui.resolveSidebar(); await settle();
+  const panel = await openChannel(h);
+  panel.webview._receive({ type: 'react', id: 'p1', emoji: '❤️', on: true }); await settle();
+  panel.webview._receive({ type: 'react', id: 'r1', replyTo: 'p1', emoji: '😆', on: true }); await settle();
+  assert.deepStrictEqual(reactCalls(h).map((c) => c[0]), [`/teams/${TEAM}/channels/${CHAN}/messages/p1/setReaction`, `/teams/${TEAM}/channels/${CHAN}/messages/p1/replies/r1/setReaction`]);
+  const last = panel.webview.posted.filter((x) => x.type === 'messages').at(-1).messages.find((x) => x.id === 'p1');
+  assert.deepStrictEqual(last.reactions, [{ emoji: '❤️', count: 1, who: 'You', mine: true }]);
+  assert.deepStrictEqual(last.replies.find((x) => x.id === 'r1').reactions, [{ emoji: '😆', count: 1, who: 'You', mine: true }]);
+  panel.dispose(); h.api.dispose();
 });
 
 test('a 403 makes the channel tab read-only', async () => {
@@ -931,8 +1014,8 @@ test('a reaction says who reacted', async () => {
   const names = new Map([['b', 'Ben Carter']]);
   const v = viewMessage(m, 'me', (id) => names.get(id) || null);
   assert.deepStrictEqual(v.reactions, [
-    { emoji: '👍', count: 3, who: 'Like: Ben Carter, You and 1 more' },
-    { emoji: '❤️', count: 1, who: 'Heart: Ben Carter' },
+    { emoji: '👍', count: 3, who: 'Like: Ben Carter, You and 1 more', mine: true },
+    { emoji: '❤️', count: 1, who: 'Heart: Ben Carter', mine: false },
   ]);
 });
 
@@ -943,5 +1026,5 @@ test('reactions in a chat tab are named from its members', async () => {
   const h = start(w); ui.resolveSidebar(); await settle();
   const panel = await openTab(h, PLAT);
   const sent = panel.webview.posted.find((x) => x.type === 'messages').messages.find((x) => x.id === 'm2');
-  assert.deepStrictEqual(sent.reactions, [{ emoji: '👍', count: 1, who: 'Like: Ben Carter' }]);
+  assert.deepStrictEqual(sent.reactions, [{ emoji: '👍', count: 1, who: 'Like: Ben Carter', mine: false }]);
 });

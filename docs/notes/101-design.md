@@ -143,6 +143,20 @@ Opening a chat that already has a tab focuses that tab.
   who reacted ("Like: Ben Carter, You and 1 more"). Graph gives a
   reaction's user an id but no name, so names come from the chat's members
   and the senders of loaded messages; anyone else is counted.
+- **Reacting** (Sean, 2026-11-25: "the chirp does not have a way to tag with
+  reaction", then "full emoji pickers"). A reaction is a button: Sean's own
+  are outlined, and a click adds his or takes it back. Hovering a message
+  shows a bar of six quick reactions (👍 ❤️ 😆 😮 😢 😡) and **+**, a picker
+  with every emoji (Unicode's list up to 15.1, from
+  `scripts/emoji-data.js`), a search by name, his recent ones and a skin
+  tone; the recent ones and the tone are kept for every tab (globalState).
+  - The page shows the change at once; the host calls Graph's
+    `setReaction` / `unsetReaction` on the chat message, post or reply, one
+    at a time per message, then sends the message as it now is. A refusal
+    sends it back unchanged, with a note on the message. A tab never turns
+    read-only over a reaction.
+  - A reaction Teams stored under its old name (`like`, `heart`…) is taken
+    back by that name. A new one must be a single emoji.
 - Images and attachments show as named links that open in the browser;
   inline images are the builder's call.
   Clicking an attachment also says so in a notification: SharePoint

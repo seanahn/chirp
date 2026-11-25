@@ -32,6 +32,13 @@ async function channelMessages(g, teamId, channelId, { top = 20, next } = {}) {
 const postChannelMessage = (g, teamId, channelId, content) => g.post(`${chan(teamId, channelId)}/messages`, html(content));
 const replyToPost = (g, teamId, channelId, postId, content) => g.post(`${chan(teamId, channelId)}/messages/${e(postId)}/replies`, html(content));
 
+/** Set or remove a reaction on a chat message, channel post, or channel reply. */
+function react(g, target, reactionType, on) {
+  const base = target.kind === 'chat' ? `/chats/${e(target.chatId)}/messages/${e(target.id)}`
+    : `${chan(target.teamId, target.channelId)}/messages/${e(target.postId || target.id)}` + (target.postId ? `/replies/${e(target.id)}` : '');
+  return g.post(`${base}/${on ? 'setReaction' : 'unsetReaction'}`, { reactionType });
+}
+
 /** One post, or, with replyToId, one reply. Graph refuses $expand=replies here: a post's replies come from postReplies. */
 function channelMessage(g, teamId, channelId, messageId, replyToId) {
   return replyToId
@@ -65,4 +72,4 @@ function startChat(g, meId, userId) {
   return g.post('/chats', { chatType: 'oneOnOne', members: [member(meId), member(userId)] });
 }
 
-module.exports = { findPeople, startChat, me, listChats, chatMessages, markChatRead, sendChatMessage, joinedTeams, channels, channelMessages, postChannelMessage, replyToPost, channelMessage, postReplies, searchMessages };
+module.exports = { findPeople, startChat, me, listChats, chatMessages, markChatRead, sendChatMessage, joinedTeams, channels, channelMessages, postChannelMessage, replyToPost, channelMessage, postReplies, searchMessages, react };

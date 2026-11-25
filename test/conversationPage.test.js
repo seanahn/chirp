@@ -306,3 +306,84 @@ test('hovering a reaction shows who reacted', () => {
   assert.strictEqual(r.textContent, '👍 2');
   assert.strictEqual(r.getAttribute('title'), 'Like: Ben Carter, You');
 });
+
+// ---- reactions: chips toggle mine, a hover bar of quick ones, and a picker with every emoji
+const EMOJI_DATA = fs.readFileSync(path.join(__dirname, '..', 'media', 'emoji-data.js'), 'utf8');
+function emojiPage() {
+  const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+  const w = dom.window, posted = [];
+  w.acquireVsCodeApi = () => ({ postMessage: (x) => posted.push(JSON.parse(JSON.stringify(x))), getState: () => undefined, setState: () => {} });
+  w.eval(EMOJI_DATA); w.eval(SCRIPT);
+  const send = (data) => w.dispatchEvent(new w.MessageEvent('message', { data }));
+  return { w, d: w.document, posted, send };
+}
+const reacts = (p) => p.posted.filter((x) => x.type === 'react');
+const chips = (box) => [...box.querySelectorAll('.reactions .reaction')].map((r) => [r.textContent, r.classList.contains('mine')]);
+
+test('a reaction chip shows mine, and a click takes it back at once, asking the host', () => {
+  const p = emojiPage(); p.send(INIT);
+  p.send({ type: 'messages', reset: true, messages: [m('1', { reactions: [{ emoji: '👍', count: 2, who: 'You, Ben', mine: true }, { emoji: '❤️', count: 1, who: 'Ben', mine: false }] })] });
+  const box = p.d.querySelector('.msg');
+  assert.deepStrictEqual(chips(box), [['👍 2', true], ['❤️ 1', false]]);
+  box.querySelector('.reaction.mine').click();
+  assert.deepStrictEqual(chips(box), [['👍 1', false], ['❤️ 1', false]]);
+  box.querySelectorAll('.reaction')[1].click();
+  assert.deepStrictEqual(chips(box), [['👍 1', false], ['❤️ 2', true]]);
+  assert.deepStrictEqual(reacts(p), [{ type: 'react', id: '1', emoji: '👍', on: false }, { type: 'react', id: '1', emoji: '❤️', on: true }]);
+  p.send({ type: 'messages', messages: [m('1', { reactions: [{ emoji: '❤️', count: 2, who: 'Ben, You', mine: true }] })] });
+  assert.deepStrictEqual(chips(p.d.querySelector('.msg')), [['❤️ 2', true]], 'the host\'s answer replaces the guess');
+});
+
+test('the hover bar offers six quick reactions; one of mine there takes it back', () => {
+  const p = emojiPage(); p.send(INIT);
+  p.send({ type: 'messages', reset: true, messages: [m('1', { reactions: [{ emoji: '😆', count: 1, mine: true }] })] });
+  const bar = p.d.querySelector('.msg .react-bar');
+  assert.deepStrictEqual([...bar.querySelectorAll('button.quick')].map((b) => b.textContent), ['👍', '❤️', '😆', '😮', '😢', '😡']);
+  assert.ok(bar.querySelector('button.add'), 'and a way to every emoji');
+  bar.querySelectorAll('button.quick')[0].click();
+  bar.querySelectorAll('button.quick')[2].click();
+  assert.deepStrictEqual(reacts(p).map((x) => [x.emoji, x.on]), [['👍', true], ['😆', false]]);
+});
+
+test('a pending message has no reactions to give', () => {
+  const p = emojiPage(); p.send(Object.assign({}, INIT, { canSend: true }));
+  const ta = p.d.querySelector('.composer textarea'); ta.value = 'hi';
+  ta.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Enter' }));
+  assert.strictEqual(p.d.querySelector('.msg.pending .react-bar'), null);
+});
+
+test('a reply\'s reaction names its post', () => {
+  const p = emojiPage(); p.send(Object.assign({}, INIT, { kind: 'channel', ref: { kind: 'channel', id: 'ch', teamId: 't' } }));
+  p.send({ type: 'messages', reset: true, messages: [m('p1', { replies: [m('r1')] })] });
+  p.d.querySelector('.replies .msg .react-bar button.quick').click();
+  assert.deepStrictEqual(reacts(p), [{ type: 'react', id: 'r1', replyTo: 'p1', emoji: '👍', on: true }]);
+});
+
+test('the picker: search, a skin tone, recent ones first, Escape closes', () => {
+  const p = emojiPage(); p.send(Object.assign({}, INIT, { emoji: { recent: ['🎉'], tone: '' } }));
+  p.send({ type: 'messages', reset: true, messages: [m('1')] });
+  p.d.querySelector('.msg .react-bar button.add').click();
+  const picker = p.d.querySelector('body > .emoji-picker');
+  assert.ok(picker, 'opened on the page itself, not inside the message');
+  assert.strictEqual(picker.querySelector('.recent button').textContent, '🎉');
+  assert.ok(picker.querySelectorAll('.grid button').length > 1500, 'every emoji');
+  const search = picker.querySelector('input.search');
+  search.value = 'thumbs up'; search.dispatchEvent(new p.w.Event('input'));
+  assert.deepStrictEqual([...picker.querySelectorAll('.grid button:not([hidden])')].map((b) => b.textContent), ['👍']);
+  picker.querySelectorAll('.tones button')[3].click();   // medium
+  assert.strictEqual(picker.querySelector('.grid button:not([hidden])').textContent, '👍\u{1F3FD}');
+  picker.querySelector('.grid button:not([hidden])').click();
+  assert.deepStrictEqual(reacts(p).at(-1), { type: 'react', id: '1', emoji: '👍\u{1F3FD}', on: true });
+  assert.deepStrictEqual(p.posted.filter((x) => x.type === 'emojiPrefs').at(-1), { type: 'emojiPrefs', recent: ['👍\u{1F3FD}', '🎉'], tone: '\u{1F3FD}' });
+  assert.strictEqual(p.d.querySelector('.emoji-picker'), null, 'a pick closes it');
+  p.d.querySelector('.msg .react-bar button.add').click();
+  p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape' }));
+  assert.strictEqual(p.d.querySelector('.emoji-picker'), null);
+});
+
+test('a refused reaction says so on its message', () => {
+  const p = emojiPage(); p.send(INIT);
+  p.send({ type: 'messages', reset: true, messages: [m('1')] });
+  p.send({ type: 'reactFailed', id: '1', error: 'Teams refused the reaction (403).' });
+  assert.strictEqual(p.d.querySelector('.msg .error').textContent, 'Teams refused the reaction (403).');
+});
